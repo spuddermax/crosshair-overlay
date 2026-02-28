@@ -1,6 +1,6 @@
 # Crosshair Overlay
 
-A lightweight, full-screen crosshair overlay for Linux (X11). The overlay is fully click-through — it draws crosshair lines and an optional center dot that follow your mouse cursor without interfering with any clicks or other input.
+A lightweight, full-screen crosshair overlay for **Linux** and **Windows**. The overlay is fully click-through — it draws crosshair lines and an optional center dot that follow your mouse cursor without interfering with any clicks or other input.
 
 Includes a built-in **pixel ruler** with configurable tick marks and distance labels, plus a dedicated **measure mode** for click-and-drag distance measurement between any two points on screen — ideal for graphic design, game development, UI work, or any task that benefits from precise pixel measurements.
 
@@ -45,10 +45,21 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 - All values editable via spin buttons (type exact values or use arrows)
 - Live-preview settings window with responsive layout
 - System tray icon with toggle, mode switching, settings, and quit
-- Settings persist across restarts (`~/.config/crosshair-overlay/config.json`)
+- Settings persist across restarts
 - Multi-monitor support
 
-## Requirements
+## Platform Support
+
+| | Linux | Windows |
+|---|---|---|
+| **Overlay** | GTK 3 + Cairo | Win32 API + GDI+ (ctypes) |
+| **Settings** | GTK 3 | tkinter |
+| **Tray icon** | AppIndicator3 | pystray + Pillow |
+| **Config path** | `~/.config/crosshair-overlay/config.json` | `%APPDATA%\crosshair-overlay\config.json` |
+
+## Linux
+
+### Requirements
 
 - Python 3
 - GTK 3 (`gir1.2-gtk-3.0`)
@@ -63,13 +74,36 @@ sudo apt install python3 gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
 
 Most of these are pre-installed on Linux Mint.
 
-## Usage
+### Usage
 
 ```bash
-python3 crosshair_overlay.py
+python3 linux/crosshair_overlay.py
 ```
 
-A crosshair will appear on screen following your cursor, and a tray icon will appear in your system tray. Right-click the tray icon to:
+## Windows
+
+### Requirements
+
+- Python 3 — download from [python.org](https://www.python.org/downloads/) and run the installer
+  - **Important:** check **"Add python.exe to PATH"** during installation
+- pystray
+- Pillow
+
+After installing Python, open a Command Prompt or PowerShell and install the dependencies:
+
+```bash
+pip install pystray pillow
+```
+
+### Usage
+
+```bash
+python windows\crosshair_overlay.py
+```
+
+## Controls
+
+A crosshair will appear on screen following your cursor, and a tray icon will appear in your system tray. Use the tray menu to:
 
 - **Toggle Crosshair** — show or hide the overlay
 - **Mode: Crosshair / Measure** — switch between the cursor-following overlay and click-and-drag distance measurement
@@ -86,7 +120,7 @@ To stop the app from the terminal, press `Ctrl+C`.
 
 ## Configuration
 
-Settings are stored in `~/.config/crosshair-overlay/config.json` and are created automatically on first run with sensible defaults:
+Settings are stored in a JSON config file (see platform table above) and are created automatically on first run with sensible defaults:
 
 | Setting | Default | Description |
 |---|---|---|

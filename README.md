@@ -26,9 +26,10 @@ The built-in ruler with tick marks and distance labels — measure pixel distanc
 - Complete click-through — all mouse input passes to windows below
 - Customizable crosshair line color, width, and opacity
 - Full screen or fixed-radius crosshair size
-- Customizable center dot color, radius, and opacity
+- Center dot with independent fill and stroke (color, opacity, width), toggleable on/off
 - **Pixel ruler** — tick marks along the crosshair lines with configurable spacing and major/minor sizes
 - **Distance labels** — pixel-distance readouts at major ticks with customizable color, opacity, and font size
+- All values editable via spin buttons (type exact values or use arrows)
 - Live-preview settings window with responsive layout
 - System tray icon with toggle, settings, and quit
 - Settings persist across restarts (`~/.config/crosshair-overlay/config.json`)
@@ -74,9 +75,13 @@ Settings are stored in `~/.config/crosshair-overlay/config.json` and are created
 | `line_opacity` | `0.35` | Line opacity (0.0 - 1.0) |
 | `crosshair_fullscreen` | `true` | Lines span the full screen |
 | `crosshair_radius` | `100` | Line radius from center in pixels (when not fullscreen) |
-| `dot_color` | `[1.0, 0.3, 0.3]` | Center dot RGB (0.0 - 1.0) |
-| `dot_radius` | `2.5` | Dot radius in pixels |
-| `dot_opacity` | `0.6` | Dot opacity (0.0 - 1.0) |
+| `dot_enabled` | `true` | Show center dot |
+| `dot_radius` | `3` | Dot radius in pixels (1 - 2000) |
+| `dot_fill_color` | `[1.0, 0.3, 0.3]` | Dot fill RGB (0.0 - 1.0) |
+| `dot_fill_opacity` | `0.6` | Dot fill opacity (0.0 - 1.0) |
+| `dot_stroke_color` | `[1.0, 1.0, 1.0]` | Dot stroke RGB (0.0 - 1.0) |
+| `dot_stroke_opacity` | `0.0` | Dot stroke opacity (0.0 - 1.0) |
+| `dot_stroke_width` | `1.0` | Dot stroke width in pixels |
 | `tick_enabled` | `false` | Show ruler tick marks along crosshair lines |
 | `tick_color` | `[0.9, 0.9, 0.9]` | Tick mark RGB (0.0 - 1.0) |
 | `tick_opacity` | `0.3` | Tick mark opacity (0.0 - 1.0) |

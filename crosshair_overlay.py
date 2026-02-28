@@ -24,9 +24,13 @@ DEFAULTS = {
 	"line_opacity": 0.35,
 	"crosshair_fullscreen": True,
 	"crosshair_radius": 100,
-	"dot_color": [1.0, 0.3, 0.3],
-	"dot_radius": 2.5,
-	"dot_opacity": 0.6,
+	"dot_enabled": True,
+	"dot_radius": 3,
+	"dot_fill_color": [1.0, 0.3, 0.3],
+	"dot_fill_opacity": 0.6,
+	"dot_stroke_color": [1.0, 1.0, 1.0],
+	"dot_stroke_opacity": 0.0,
+	"dot_stroke_width": 1.0,
 	"tick_enabled": False,
 	"tick_color": [0.9, 0.9, 0.9],
 	"tick_opacity": 0.3,
@@ -111,9 +115,13 @@ class CrosshairOverlay(Gtk.Window):
 		self.line_width = cfg["line_width"]
 		self.crosshair_fullscreen = cfg["crosshair_fullscreen"]
 		self.crosshair_radius = cfg["crosshair_radius"]
-		r, g, b = cfg["dot_color"]
-		self.center_dot_color = (r, g, b, cfg["dot_opacity"])
+		self.dot_enabled = cfg["dot_enabled"]
 		self.center_dot_radius = cfg["dot_radius"]
+		r, g, b = cfg["dot_fill_color"]
+		self.dot_fill_color = (r, g, b, cfg["dot_fill_opacity"])
+		r, g, b = cfg["dot_stroke_color"]
+		self.dot_stroke_color = (r, g, b, cfg["dot_stroke_opacity"])
+		self.dot_stroke_width = cfg["dot_stroke_width"]
 		self.tick_enabled = cfg["tick_enabled"]
 		r, g, b = cfg["tick_color"]
 		self.tick_color = (r, g, b, cfg["tick_opacity"])
@@ -229,10 +237,17 @@ class CrosshairOverlay(Gtk.Window):
 				i += 1
 				dist = i * sp
 
-		if self.center_dot_radius > 0:
-			cr.set_source_rgba(*self.center_dot_color)
+		if self.dot_enabled and self.center_dot_radius > 0:
+			cr.new_path()
 			cr.arc(self.mx, self.my, self.center_dot_radius, 0, 2 * math.pi)
-			cr.fill()
+			cr.set_source_rgba(*self.dot_fill_color)
+			cr.fill_preserve()
+			if self.dot_stroke_width > 0 and self.dot_stroke_color[3] > 0:
+				cr.set_line_width(self.dot_stroke_width)
+				cr.set_source_rgba(*self.dot_stroke_color)
+				cr.stroke()
+			else:
+				cr.new_path()
 
 		return True
 
@@ -247,7 +262,7 @@ class SettingsWindow(Gtk.Window):
 		self.overlay = overlay
 		self.cfg = cfg
 
-		self.set_default_size(700, 600)
+		self.set_default_size(700, 680)
 		self.set_position(Gtk.WindowPosition.CENTER)
 		self.connect("delete-event", self.on_delete)
 
@@ -275,31 +290,44 @@ class SettingsWindow(Gtk.Window):
 
 		self.line_color_btn = self._add_color_row(
 			grid, row, "Color", cfg["line_color"]); row += 1
-		self.line_width_scale = self._add_scale_row(
-			grid, row, "Width", 0.5, 10.0, 0.5, cfg["line_width"]); row += 1
-		self.line_opacity_scale = self._add_scale_row(
-			grid, row, "Opacity", 0.0, 1.0, 0.05, cfg["line_opacity"]); row += 1
+		self.line_width_spin = self._add_spin_row(
+			grid, row, "Width", 0.5, 10.0, 0.5, cfg["line_width"], 1); row += 1
+		self.line_opacity_spin = self._add_spin_row(
+			grid, row, "Opacity", 0.0, 1.0, 0.05, cfg["line_opacity"], 2); row += 1
 
 		self.fullscreen_check = Gtk.CheckButton(label="Full screen")
 		self.fullscreen_check.set_active(cfg["crosshair_fullscreen"])
 		self.fullscreen_check.connect("toggled", self.on_fullscreen_toggled)
 		grid.attach(self.fullscreen_check, 0, row, 2, 1); row += 1
 
-		self.crosshair_radius_scale = self._add_scale_row(
-			grid, row, "Radius", 5, 2000, 5, cfg["crosshair_radius"])
-		self.crosshair_radius_scale.set_sensitive(not cfg["crosshair_fullscreen"])
+		self.crosshair_radius_spin = self._add_spin_row(
+			grid, row, "Radius", 5, 2000, 1, cfg["crosshair_radius"])
+		self.crosshair_radius_spin.set_sensitive(not cfg["crosshair_fullscreen"])
 
 		# ── Center Dot ──
 		frame, grid = self._make_section("Center Dot")
 		flowbox.add(frame)
 		row = 0
 
-		self.dot_color_btn = self._add_color_row(
-			grid, row, "Color", cfg["dot_color"]); row += 1
-		self.dot_radius_scale = self._add_scale_row(
-			grid, row, "Radius", 0.0, 10.0, 0.5, cfg["dot_radius"]); row += 1
-		self.dot_opacity_scale = self._add_scale_row(
-			grid, row, "Opacity", 0.0, 1.0, 0.05, cfg["dot_opacity"])
+		self.dot_check = Gtk.CheckButton(label="Enable")
+		self.dot_check.set_active(cfg["dot_enabled"])
+		self.dot_check.connect("toggled", self.on_dot_toggled)
+		grid.attach(self.dot_check, 0, row, 2, 1); row += 1
+
+		self.dot_radius_spin = self._add_spin_row(
+			grid, row, "Radius", 1, 2000, 1, cfg["dot_radius"]); row += 1
+		self.dot_fill_color_btn = self._add_color_row(
+			grid, row, "Fill color", cfg["dot_fill_color"]); row += 1
+		self.dot_fill_opacity_spin = self._add_spin_row(
+			grid, row, "Fill opacity", 0.0, 1.0, 0.05, cfg["dot_fill_opacity"], 2); row += 1
+		self.dot_stroke_color_btn = self._add_color_row(
+			grid, row, "Stroke color", cfg["dot_stroke_color"]); row += 1
+		self.dot_stroke_opacity_spin = self._add_spin_row(
+			grid, row, "Stroke opacity", 0.0, 1.0, 0.05, cfg["dot_stroke_opacity"], 2); row += 1
+		self.dot_stroke_width_spin = self._add_spin_row(
+			grid, row, "Stroke width", 0.5, 10.0, 0.5, cfg["dot_stroke_width"], 1)
+
+		self._set_dot_controls_sensitive(cfg["dot_enabled"])
 
 		# ── Tick Marks ──
 		frame, grid = self._make_section("Tick Marks")
@@ -313,16 +341,16 @@ class SettingsWindow(Gtk.Window):
 
 		self.tick_color_btn = self._add_color_row(
 			grid, row, "Color", cfg["tick_color"]); row += 1
-		self.tick_opacity_scale = self._add_scale_row(
-			grid, row, "Opacity", 0.0, 1.0, 0.05, cfg["tick_opacity"]); row += 1
-		self.tick_spacing_scale = self._add_scale_row(
+		self.tick_opacity_spin = self._add_spin_row(
+			grid, row, "Opacity", 0.0, 1.0, 0.05, cfg["tick_opacity"], 2); row += 1
+		self.tick_spacing_spin = self._add_spin_row(
 			grid, row, "Spacing", 5, 200, 1, cfg["tick_spacing"]); row += 1
-		self.tick_major_every_scale = self._add_scale_row(
+		self.tick_major_every_spin = self._add_spin_row(
 			grid, row, "Major every", 2, 20, 1, cfg["tick_major_every"]); row += 1
-		self.tick_minor_length_scale = self._add_scale_row(
-			grid, row, "Minor length", 1.0, 20.0, 0.5, cfg["tick_minor_length"]); row += 1
-		self.tick_major_length_scale = self._add_scale_row(
-			grid, row, "Major length", 1.0, 40.0, 0.5, cfg["tick_major_length"])
+		self.tick_minor_length_spin = self._add_spin_row(
+			grid, row, "Minor length", 1.0, 20.0, 0.5, cfg["tick_minor_length"], 1); row += 1
+		self.tick_major_length_spin = self._add_spin_row(
+			grid, row, "Major length", 1.0, 40.0, 0.5, cfg["tick_major_length"], 1)
 
 		# ── Tick Labels ──
 		frame, grid = self._make_section("Tick Labels")
@@ -336,9 +364,9 @@ class SettingsWindow(Gtk.Window):
 
 		self.tick_label_color_btn = self._add_color_row(
 			grid, row, "Color", cfg["tick_label_color"]); row += 1
-		self.tick_label_opacity_scale = self._add_scale_row(
-			grid, row, "Opacity", 0.0, 1.0, 0.05, cfg["tick_label_opacity"]); row += 1
-		self.tick_label_size_scale = self._add_scale_row(
+		self.tick_label_opacity_spin = self._add_spin_row(
+			grid, row, "Opacity", 0.0, 1.0, 0.05, cfg["tick_label_opacity"], 2); row += 1
+		self.tick_label_size_spin = self._add_spin_row(
 			grid, row, "Size", 6.0, 24.0, 1.0, cfg["tick_label_size"])
 
 		self._set_tick_controls_sensitive(cfg["tick_enabled"])
@@ -365,25 +393,26 @@ class SettingsWindow(Gtk.Window):
 		grid.attach(btn, 1, row, 1, 1)
 		return btn
 
-	def _add_scale_row(self, grid, row, label, lo, hi, step, value):
+	def _add_spin_row(self, grid, row, label, lo, hi, step, value, digits=0):
 		grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
-		scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, lo, hi, step)
-		scale.set_value(value)
-		scale.set_hexpand(True)
-		scale.connect("value-changed", self.on_change)
-		grid.attach(scale, 1, row, 1, 1)
-		return scale
+		adj = Gtk.Adjustment(value=value, lower=lo, upper=hi,
+			step_increment=step, page_increment=step * 10)
+		spin = Gtk.SpinButton(adjustment=adj, digits=digits)
+		spin.set_hexpand(True)
+		spin.connect("value-changed", self.on_change)
+		grid.attach(spin, 1, row, 1, 1)
+		return spin
 
 	def _set_tick_controls_sensitive(self, enabled):
-		for w in (self.tick_color_btn, self.tick_opacity_scale,
-				self.tick_spacing_scale, self.tick_major_every_scale,
-				self.tick_minor_length_scale, self.tick_major_length_scale,
+		for w in (self.tick_color_btn, self.tick_opacity_spin,
+				self.tick_spacing_spin, self.tick_major_every_spin,
+				self.tick_minor_length_spin, self.tick_major_length_spin,
 				self.tick_labels_check):
 			w.set_sensitive(enabled)
 
 	def _set_label_controls_sensitive(self, enabled):
-		for w in (self.tick_label_color_btn, self.tick_label_opacity_scale,
-				self.tick_label_size_scale):
+		for w in (self.tick_label_color_btn, self.tick_label_opacity_spin,
+				self.tick_label_size_spin):
 			w.set_sensitive(enabled)
 
 	def on_tick_toggled(self, btn):
@@ -398,37 +427,52 @@ class SettingsWindow(Gtk.Window):
 			self.tick_check.get_active() and btn.get_active())
 		self.on_change()
 
+	def _set_dot_controls_sensitive(self, enabled):
+		for w in (self.dot_radius_spin, self.dot_fill_color_btn,
+				self.dot_fill_opacity_spin, self.dot_stroke_color_btn,
+				self.dot_stroke_opacity_spin, self.dot_stroke_width_spin):
+			w.set_sensitive(enabled)
+
+	def on_dot_toggled(self, btn):
+		self._set_dot_controls_sensitive(btn.get_active())
+		self.on_change()
+
 	def on_fullscreen_toggled(self, btn):
-		self.crosshair_radius_scale.set_sensitive(not btn.get_active())
+		self.crosshair_radius_spin.set_sensitive(not btn.get_active())
 		self.on_change()
 
 	def on_change(self, *_args):
 		lc = self.line_color_btn.get_rgba()
-		dc = self.dot_color_btn.get_rgba()
+		dfc = self.dot_fill_color_btn.get_rgba()
+		dsc = self.dot_stroke_color_btn.get_rgba()
 		tc = self.tick_color_btn.get_rgba()
 		self.cfg.update({
 			"line_color": [lc.red, lc.green, lc.blue],
-			"line_width": self.line_width_scale.get_value(),
-			"line_opacity": round(self.line_opacity_scale.get_value(), 2),
+			"line_width": self.line_width_spin.get_value(),
+			"line_opacity": round(self.line_opacity_spin.get_value(), 2),
 			"crosshair_fullscreen": self.fullscreen_check.get_active(),
-			"crosshair_radius": int(self.crosshair_radius_scale.get_value()),
-			"dot_color": [dc.red, dc.green, dc.blue],
-			"dot_radius": self.dot_radius_scale.get_value(),
-			"dot_opacity": round(self.dot_opacity_scale.get_value(), 2),
+			"crosshair_radius": int(self.crosshair_radius_spin.get_value()),
+			"dot_enabled": self.dot_check.get_active(),
+			"dot_radius": int(self.dot_radius_spin.get_value()),
+			"dot_fill_color": [dfc.red, dfc.green, dfc.blue],
+			"dot_fill_opacity": round(self.dot_fill_opacity_spin.get_value(), 2),
+			"dot_stroke_color": [dsc.red, dsc.green, dsc.blue],
+			"dot_stroke_opacity": round(self.dot_stroke_opacity_spin.get_value(), 2),
+			"dot_stroke_width": self.dot_stroke_width_spin.get_value(),
 			"tick_enabled": self.tick_check.get_active(),
 			"tick_color": [tc.red, tc.green, tc.blue],
-			"tick_opacity": round(self.tick_opacity_scale.get_value(), 2),
-			"tick_spacing": int(self.tick_spacing_scale.get_value()),
-			"tick_major_every": int(self.tick_major_every_scale.get_value()),
-			"tick_minor_length": self.tick_minor_length_scale.get_value(),
-			"tick_major_length": self.tick_major_length_scale.get_value(),
+			"tick_opacity": round(self.tick_opacity_spin.get_value(), 2),
+			"tick_spacing": int(self.tick_spacing_spin.get_value()),
+			"tick_major_every": int(self.tick_major_every_spin.get_value()),
+			"tick_minor_length": self.tick_minor_length_spin.get_value(),
+			"tick_major_length": self.tick_major_length_spin.get_value(),
 			"tick_labels": self.tick_labels_check.get_active(),
 			"tick_label_color": [
 				self.tick_label_color_btn.get_rgba().red,
 				self.tick_label_color_btn.get_rgba().green,
 				self.tick_label_color_btn.get_rgba().blue],
-			"tick_label_opacity": round(self.tick_label_opacity_scale.get_value(), 2),
-			"tick_label_size": self.tick_label_size_scale.get_value(),
+			"tick_label_opacity": round(self.tick_label_opacity_spin.get_value(), 2),
+			"tick_label_size": self.tick_label_size_spin.get_value(),
 		})
 		self.overlay.apply_settings(self.cfg)
 		save_config(self.cfg)

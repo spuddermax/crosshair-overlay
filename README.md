@@ -2,9 +2,11 @@
 
 A lightweight, full-screen crosshair overlay for Linux (X11). The overlay is fully click-through — it draws crosshair lines and an optional center dot that follow your mouse cursor without interfering with any clicks or other input.
 
-Includes a system tray icon for quick access to toggle visibility, open settings, or quit, and a settings window where all changes apply live.
+Includes a built-in **pixel ruler** with configurable tick marks and distance labels, turning your cursor into a measuring tool for graphic design, game development, UI work, or any task that benefits from precise pixel measurements.
 
-## Screenshot
+A system tray icon provides quick access to toggle visibility, open settings, or quit. All settings apply live and persist across restarts.
+
+## Screenshots
 
 The crosshair overlay in action, showing the crosshair lines and center dot following the cursor:
 
@@ -14,7 +16,7 @@ Using the crosshair with a radius of 170 in Inkscape, making the exact point of 
 
 ![Crosshair overlay in Inkscape](screenshot-inkscape.png)
 
-Demonstrating the ruler tick marks with distance labels, making it easy to measure pixel distances directly from the cursor:
+The built-in ruler with tick marks and distance labels — measure pixel distances directly from your cursor in any application:
 
 ![Crosshair overlay with ruler ticks](screenshot-inkscape-ruler.png)
 
@@ -23,9 +25,11 @@ Demonstrating the ruler tick marks with distance labels, making it easy to measu
 - Full-screen transparent overlay, always on top
 - Complete click-through — all mouse input passes to windows below
 - Customizable crosshair line color, width, and opacity
+- Full screen or fixed-radius crosshair size
 - Customizable center dot color, radius, and opacity
-- Optional ruler tick marks with major/minor intervals
-- Live-preview settings window (changes apply instantly)
+- **Pixel ruler** — tick marks along the crosshair lines with configurable spacing and major/minor sizes
+- **Distance labels** — pixel-distance readouts at major ticks with customizable color, opacity, and font size
+- Live-preview settings window with responsive layout
 - System tray icon with toggle, settings, and quit
 - Settings persist across restarts (`~/.config/crosshair-overlay/config.json`)
 - Multi-monitor support

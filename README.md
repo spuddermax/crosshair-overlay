@@ -14,12 +14,17 @@ Using the crosshair with a radius of 170 in Inkscape, making the exact point of 
 
 ![Crosshair overlay in Inkscape](screenshot-inkscape.png)
 
+Demonstrating the ruler tick marks with distance labels, making it easy to measure pixel distances directly from the cursor:
+
+![Crosshair overlay with ruler ticks](screenshot-inkscape-ruler.png)
+
 ## Features
 
 - Full-screen transparent overlay, always on top
 - Complete click-through — all mouse input passes to windows below
 - Customizable crosshair line color, width, and opacity
 - Customizable center dot color, radius, and opacity
+- Optional ruler tick marks with major/minor intervals
 - Live-preview settings window (changes apply instantly)
 - System tray icon with toggle, settings, and quit
 - Settings persist across restarts (`~/.config/crosshair-overlay/config.json`)
@@ -68,6 +73,17 @@ Settings are stored in `~/.config/crosshair-overlay/config.json` and are created
 | `dot_color` | `[1.0, 0.3, 0.3]` | Center dot RGB (0.0 - 1.0) |
 | `dot_radius` | `2.5` | Dot radius in pixels |
 | `dot_opacity` | `0.6` | Dot opacity (0.0 - 1.0) |
+| `tick_enabled` | `false` | Show ruler tick marks along crosshair lines |
+| `tick_color` | `[0.9, 0.9, 0.9]` | Tick mark RGB (0.0 - 1.0) |
+| `tick_opacity` | `0.3` | Tick mark opacity (0.0 - 1.0) |
+| `tick_spacing` | `10` | Pixels between minor ticks (5 - 200) |
+| `tick_major_every` | `5` | Every Nth tick is a major (longer) tick |
+| `tick_minor_length` | `3.0` | Minor tick length in pixels (each side of line) |
+| `tick_major_length` | `6.0` | Major tick length in pixels (each side of line) |
+| `tick_labels` | `false` | Show pixel-distance labels at major ticks |
+| `tick_label_color` | `[0.9, 0.9, 0.9]` | Label text RGB (0.0 - 1.0) |
+| `tick_label_opacity` | `0.5` | Label text opacity (0.0 - 1.0) |
+| `tick_label_size` | `9.0` | Label font size in pixels (6 - 24) |
 
 ## Notes
 

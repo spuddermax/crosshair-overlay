@@ -4,7 +4,11 @@ A lightweight, full-screen crosshair overlay for Linux (X11). The overlay is ful
 
 Includes a system tray icon for quick access to toggle visibility, open settings, or quit, and a settings window where all changes apply live.
 
-![Screenshot](screenshot.png)
+## Screenshot
+
+The crosshair overlay in action, showing the crosshair lines and center dot following the cursor:
+
+![Crosshair overlay in action](screenshot.png)
 
 ## Features
 

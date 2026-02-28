@@ -68,10 +68,14 @@ def ensure_tray_icon():
 		return
 	os.makedirs(CONFIG_DIR, exist_ok=True)
 	svg = (
-		'<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">'
-		'<line x1="11" y1="2" x2="11" y2="20" stroke="#ccc" stroke-width="1.5"/>'
-		'<line x1="2" y1="11" x2="20" y2="11" stroke="#ccc" stroke-width="1.5"/>'
-		'<circle cx="11" cy="11" r="2" fill="#e55"/>'
+		'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">'
+		'<circle cx="24" cy="24" r="18" fill="none" stroke="#ddd" stroke-width="1.5" opacity="0.6"/>'
+		'<line x1="24" y1="2" x2="24" y2="18" stroke="#ddd" stroke-width="2" stroke-linecap="round"/>'
+		'<line x1="24" y1="30" x2="24" y2="46" stroke="#ddd" stroke-width="2" stroke-linecap="round"/>'
+		'<line x1="2" y1="24" x2="18" y2="24" stroke="#ddd" stroke-width="2" stroke-linecap="round"/>'
+		'<line x1="30" y1="24" x2="46" y2="24" stroke="#ddd" stroke-width="2" stroke-linecap="round"/>'
+		'<circle cx="24" cy="24" r="3" fill="#e55"/>'
+		'<circle cx="24" cy="24" r="3" fill="none" stroke="#fff" stroke-width="0.5" opacity="0.5"/>'
 		'</svg>'
 	)
 	with open(ICON_FILE, "w") as f:

@@ -24,6 +24,10 @@ The center dot scaled up with a stroke outline, useful for highlighting a precis
 
 ![Crosshair overlay with center dot](screenshot-inkscape-ruler-dot.png)
 
+Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel distances between any two points, with signed (x, y) coordinates:
+
+![Measure mode with ruler ticks](screenshot-inkscape-measure.png)
+
 ## Features
 
 - Full-screen transparent overlay, always on top

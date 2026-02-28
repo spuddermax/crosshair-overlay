@@ -4,6 +4,8 @@ A lightweight, full-screen crosshair overlay for Linux (X11). The overlay is ful
 
 Includes a system tray icon for quick access to toggle visibility, open settings, or quit, and a settings window where all changes apply live.
 
+![Screenshot](screenshot.png)
+
 ## Features
 
 - Full-screen transparent overlay, always on top
@@ -56,6 +58,10 @@ Settings are stored in `~/.config/crosshair-overlay/config.json` and are created
 | `dot_color` | `[1.0, 0.3, 0.3]` | Center dot RGB (0.0 - 1.0) |
 | `dot_radius` | `2.5` | Dot radius in pixels |
 | `dot_opacity` | `0.6` | Dot opacity (0.0 - 1.0) |
+
+## Notes
+
+The crosshair overlay will appear in screenshots only if your screenshot tool is set to capture the cursor.
 
 ## License
 

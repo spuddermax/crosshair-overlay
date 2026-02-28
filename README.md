@@ -10,6 +10,10 @@ The crosshair overlay in action, showing the crosshair lines and center dot foll
 
 ![Crosshair overlay in action](screenshot.png)
 
+Using the crosshair with a radius of 170 in Inkscape, making the exact point of the fill tool easily seen:
+
+![Crosshair overlay in Inkscape](screenshot-inkscape.png)
+
 ## Features
 
 - Full-screen transparent overlay, always on top

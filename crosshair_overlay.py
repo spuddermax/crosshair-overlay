@@ -58,9 +58,12 @@ def load_config():
 
 
 def save_config(cfg):
-	os.makedirs(CONFIG_DIR, exist_ok=True)
-	with open(CONFIG_FILE, "w") as f:
-		json.dump(cfg, f, indent=2)
+	try:
+		os.makedirs(CONFIG_DIR, exist_ok=True)
+		with open(CONFIG_FILE, "w") as f:
+			json.dump(cfg, f, indent=2)
+	except OSError as e:
+		print(f"crosshair-overlay: failed to save config: {e}", file=sys.stderr)
 
 
 def ensure_tray_icon():
@@ -97,10 +100,17 @@ class CrosshairOverlay(Gtk.Window):
 		self.set_accept_focus(False)
 
 		screen = Gdk.Screen.get_default()
-		self.full_width = screen.get_width()
-		self.full_height = screen.get_height()
+		display = Gdk.Display.get_default()
+		n = display.get_n_monitors()
+		rects = [display.get_monitor(i).get_geometry() for i in range(n)]
+		x0 = min(r.x for r in rects)
+		y0 = min(r.y for r in rects)
+		x1 = max(r.x + r.width for r in rects)
+		y1 = max(r.y + r.height for r in rects)
+		self.full_width = x1 - x0
+		self.full_height = y1 - y0
 		self.set_default_size(self.full_width, self.full_height)
-		self.move(0, 0)
+		self.move(x0, y0)
 
 		self.set_app_paintable(True)
 		visual = screen.get_rgba_visual()
@@ -130,28 +140,27 @@ class CrosshairOverlay(Gtk.Window):
 		self.apply_settings(cfg)
 
 	def apply_settings(self, cfg):
-		r, g, b = cfg["line_color"]
-		self.line_color = (r, g, b, cfg["line_opacity"])
+		def rgba(color_key, opacity_key):
+			r, g, b = cfg[color_key]
+			return (r, g, b, cfg[opacity_key])
+
+		self.line_color = rgba("line_color", "line_opacity")
 		self.line_width = cfg["line_width"]
 		self.crosshair_fullscreen = cfg["crosshair_fullscreen"]
 		self.crosshair_radius = cfg["crosshair_radius"]
 		self.dot_enabled = cfg["dot_enabled"]
 		self.center_dot_radius = cfg["dot_radius"]
-		r, g, b = cfg["dot_fill_color"]
-		self.dot_fill_color = (r, g, b, cfg["dot_fill_opacity"])
-		r, g, b = cfg["dot_stroke_color"]
-		self.dot_stroke_color = (r, g, b, cfg["dot_stroke_opacity"])
+		self.dot_fill_color = rgba("dot_fill_color", "dot_fill_opacity")
+		self.dot_stroke_color = rgba("dot_stroke_color", "dot_stroke_opacity")
 		self.dot_stroke_width = cfg["dot_stroke_width"]
 		self.tick_enabled = cfg["tick_enabled"]
-		r, g, b = cfg["tick_color"]
-		self.tick_color = (r, g, b, cfg["tick_opacity"])
+		self.tick_color = rgba("tick_color", "tick_opacity")
 		self.tick_spacing = cfg["tick_spacing"]
 		self.tick_major_every = cfg["tick_major_every"]
 		self.tick_minor_length = cfg["tick_minor_length"]
 		self.tick_major_length = cfg["tick_major_length"]
 		self.tick_labels = cfg["tick_labels"]
-		r, g, b = cfg["tick_label_color"]
-		self.tick_label_color = (r, g, b, cfg["tick_label_opacity"])
+		self.tick_label_color = rgba("tick_label_color", "tick_label_opacity")
 		self.tick_label_size = cfg["tick_label_size"]
 		self.queue_draw()
 
@@ -391,6 +400,13 @@ class CrosshairOverlay(Gtk.Window):
 			cr.save()
 			ux, uy = dx / dist, dy / dist
 			px, py = -uy, ux  # perpendicular
+			cr.set_line_width(max(1, self.line_width * 0.6))
+			cr.set_source_rgba(*self.tick_color)
+			if self.tick_labels:
+				cr.select_font_face("sans-serif",
+					cairo.FONT_SLANT_NORMAL,
+					cairo.FONT_WEIGHT_NORMAL)
+				cr.set_font_size(self.tick_label_size)
 			steps = int(dist / self.tick_spacing)
 			for i in range(1, steps + 1):
 				t = i * self.tick_spacing
@@ -401,17 +417,12 @@ class CrosshairOverlay(Gtk.Window):
 				length = (self.tick_major_length if is_major
 					else self.tick_minor_length)
 				half = length / 2
-				cr.set_line_width(max(1, self.line_width * 0.6))
 				cr.set_source_rgba(*self.tick_color)
 				cr.move_to(tx - px * half, ty - py * half)
 				cr.line_to(tx + px * half, ty + py * half)
 				cr.stroke()
 				if is_major and self.tick_labels:
 					lbl = "%d" % int(t)
-					cr.select_font_face("sans-serif",
-						cairo.FONT_SLANT_NORMAL,
-						cairo.FONT_WEIGHT_NORMAL)
-					cr.set_font_size(self.tick_label_size)
 					cr.set_source_rgba(*self.tick_label_color)
 					ext_t = cr.text_extents(lbl)
 					off = half + 2 + ext_t.height / 2
@@ -457,6 +468,7 @@ class SettingsWindow(Gtk.Window):
 		super().__init__(title="Crosshair Settings")
 		self.overlay = overlay
 		self.cfg = cfg
+		self._save_timer = None
 
 		self.set_default_size(700, 680)
 		self.set_position(Gtk.WindowPosition.CENTER)
@@ -584,7 +596,7 @@ class SettingsWindow(Gtk.Window):
 		grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
 		btn = Gtk.ColorButton()
 		btn.set_rgba(Gdk.RGBA(rgb[0], rgb[1], rgb[2], 1.0))
-		btn.set_use_alpha(False)
+		btn.props.use_alpha = False
 		btn.connect("color-set", self.on_change)
 		grid.attach(btn, 1, row, 1, 1)
 		return btn
@@ -671,9 +683,23 @@ class SettingsWindow(Gtk.Window):
 			"tick_label_size": self.tick_label_size_spin.get_value(),
 		})
 		self.overlay.apply_settings(self.cfg)
+		self._schedule_save()
+
+	def _schedule_save(self):
+		if self._save_timer is not None:
+			GLib.source_remove(self._save_timer)
+		self._save_timer = GLib.timeout_add(500, self._do_save)
+
+	def _do_save(self):
+		self._save_timer = None
 		save_config(self.cfg)
+		return False
 
 	def on_delete(self, *_args):
+		if self._save_timer is not None:
+			GLib.source_remove(self._save_timer)
+			self._save_timer = None
+			save_config(self.cfg)
 		self.hide()
 		return True
 

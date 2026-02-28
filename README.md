@@ -10,23 +10,23 @@ A system tray icon provides quick access to toggle visibility, open settings, or
 
 The crosshair overlay in action, showing the crosshair lines and center dot following the cursor:
 
-![Crosshair overlay in action](screenshot.png)
+![Crosshair overlay in action](images/screenshot.png)
 
 Using the crosshair with a radius of 170 in Inkscape, making the exact point of the fill tool easily seen:
 
-![Crosshair overlay in Inkscape](screenshot-inkscape.png)
+![Crosshair overlay in Inkscape](images/screenshot-inkscape.png)
 
 The built-in ruler with tick marks and distance labels — measure pixel distances directly from your cursor in any application:
 
-![Crosshair overlay with ruler ticks](screenshot-inkscape-ruler.png)
+![Crosshair overlay with ruler ticks](images/screenshot-inkscape-ruler.png)
 
 The center dot scaled up with a stroke outline, useful for highlighting a precise area or creating a circular reference point:
 
-![Crosshair overlay with center dot](screenshot-inkscape-ruler-dot.png)
+![Crosshair overlay with center dot](images/screenshot-inkscape-ruler-dot.png)
 
 Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel distances between any two points, with signed (x, y) coordinates:
 
-![Measure mode with ruler ticks](screenshot-inkscape-measure.png)
+![Measure mode with ruler ticks](images/screenshot-inkscape-measure.png)
 
 ## Features
 

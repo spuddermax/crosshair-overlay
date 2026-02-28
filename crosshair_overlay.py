@@ -542,7 +542,7 @@ if __name__ == "__main__":
 	overlay = CrosshairOverlay(cfg)
 	overlay.show_all()
 	overlay.enable_click_through()
-	GLib.idle_add(overlay.poll_pointer)
+	GLib.timeout_add(1, overlay.poll_pointer)
 
 	settings_win = SettingsWindow(overlay, cfg)
 	tray = TrayIcon(overlay, settings_win)

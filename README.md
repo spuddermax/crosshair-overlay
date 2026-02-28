@@ -20,6 +20,10 @@ The built-in ruler with tick marks and distance labels — measure pixel distanc
 
 ![Crosshair overlay with ruler ticks](screenshot-inkscape-ruler.png)
 
+The center dot scaled up with a stroke outline, useful for highlighting a precise area or creating a circular reference point:
+
+![Crosshair overlay with center dot](screenshot-inkscape-ruler-dot.png)
+
 ## Features
 
 - Full-screen transparent overlay, always on top

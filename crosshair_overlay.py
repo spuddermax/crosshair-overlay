@@ -94,6 +94,7 @@ class CrosshairOverlay(Gtk.Window):
 		self.set_type_hint(Gdk.WindowTypeHint.DOCK)
 		self.set_skip_taskbar_hint(True)
 		self.set_skip_pager_hint(True)
+		self.set_accept_focus(False)
 
 		screen = Gdk.Screen.get_default()
 		self.full_width = screen.get_width()
@@ -111,15 +112,18 @@ class CrosshairOverlay(Gtk.Window):
 		self.add_events(
 			Gdk.EventMask.BUTTON_PRESS_MASK |
 			Gdk.EventMask.BUTTON_RELEASE_MASK |
-			Gdk.EventMask.POINTER_MOTION_MASK)
+			Gdk.EventMask.POINTER_MOTION_MASK |
+			Gdk.EventMask.KEY_PRESS_MASK)
 		self.connect("button-press-event", self.on_button_press)
 		self.connect("button-release-event", self.on_button_release)
 		self.connect("motion-notify-event", self.on_motion_notify)
+		self.connect("key-press-event", self.on_key_press)
 
 		self.mx = self.full_width // 2
 		self.my = self.full_height // 2
 		self.active = True
 		self.mode = "crosshair"
+		self.mode_changed_cb = None
 		self.measure_start = None
 		self.measure_end = None
 		self.measuring = False
@@ -163,22 +167,30 @@ class CrosshairOverlay(Gtk.Window):
 			gdk_win.input_shape_combine_region(cairo.Region(rect), 0, 0)
 
 	def set_mode(self, mode):
+		if self.mode == mode:
+			return
 		self.mode = mode
 		if mode == "measure":
 			self.disable_click_through()
+			self.set_accept_focus(True)
+			self.present()
 			gdk_win = self.get_window()
 			if gdk_win:
 				gdk_win.set_cursor(
 					Gdk.Cursor.new_from_name(Gdk.Display.get_default(), "crosshair"))
+				gdk_win.focus(Gdk.CURRENT_TIME)
 		else:
 			self.measure_start = None
 			self.measure_end = None
 			self.measuring = False
+			self.set_accept_focus(False)
 			self.enable_click_through()
 			gdk_win = self.get_window()
 			if gdk_win:
 				gdk_win.set_cursor(None)
 		self.queue_draw()
+		if self.mode_changed_cb:
+			self.mode_changed_cb(mode)
 
 	def on_button_press(self, widget, event):
 		if self.mode != "measure" or event.button != 1:
@@ -220,6 +232,12 @@ class CrosshairOverlay(Gtk.Window):
 		self.measure_end = (ex, ey)
 		self.queue_draw()
 		return True
+
+	def on_key_press(self, widget, event):
+		if event.keyval == Gdk.KEY_Escape and self.mode == "measure":
+			self.set_mode("crosshair")
+			return True
+		return False
 
 	def poll_pointer(self):
 		if self.mode != "crosshair":
@@ -682,22 +700,20 @@ class TrayIcon:
 		item_toggle.connect("activate", self.on_toggle)
 		menu.append(item_toggle)
 
-		# Mode submenu
-		mode_item = Gtk.MenuItem(label="Mode")
-		mode_menu = Gtk.Menu()
-		mode_item.set_submenu(mode_menu)
+		# Mode heading and radio items
+		mode_label = Gtk.MenuItem(label="Mode")
+		mode_label.set_sensitive(False)
+		menu.append(mode_label)
 
-		self.radio_crosshair = Gtk.RadioMenuItem(label="Crosshair")
+		self.radio_crosshair = Gtk.RadioMenuItem(label="  Crosshair")
 		self.radio_crosshair.set_active(True)
 		self.radio_crosshair.connect("toggled", self.on_mode_changed, "crosshair")
-		mode_menu.append(self.radio_crosshair)
+		menu.append(self.radio_crosshair)
 
 		self.radio_measure = Gtk.RadioMenuItem.new_with_label_from_widget(
-			self.radio_crosshair, "Measure")
+			self.radio_crosshair, "  Measure")
 		self.radio_measure.connect("toggled", self.on_mode_changed, "measure")
-		mode_menu.append(self.radio_measure)
-
-		menu.append(mode_item)
+		menu.append(self.radio_measure)
 
 		item_settings = Gtk.MenuItem(label="Settings")
 		item_settings.connect("activate", self.on_settings)
@@ -711,6 +727,13 @@ class TrayIcon:
 
 		menu.show_all()
 		self.indicator.set_menu(menu)
+		self.overlay.mode_changed_cb = self._sync_mode_radio
+
+	def _sync_mode_radio(self, mode):
+		if mode == "crosshair" and not self.radio_crosshair.get_active():
+			self.radio_crosshair.set_active(True)
+		elif mode == "measure" and not self.radio_measure.get_active():
+			self.radio_measure.set_active(True)
 
 	def on_toggle(self, _item):
 		self.overlay.active = not self.overlay.active

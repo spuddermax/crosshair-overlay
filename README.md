@@ -2,7 +2,7 @@
 
 A lightweight, full-screen crosshair overlay for Linux (X11). The overlay is fully click-through — it draws crosshair lines and an optional center dot that follow your mouse cursor without interfering with any clicks or other input.
 
-Includes a built-in **pixel ruler** with configurable tick marks and distance labels, turning your cursor into a measuring tool for graphic design, game development, UI work, or any task that benefits from precise pixel measurements.
+Includes a built-in **pixel ruler** with configurable tick marks and distance labels, plus a dedicated **measure mode** for click-and-drag distance measurement between any two points on screen — ideal for graphic design, game development, UI work, or any task that benefits from precise pixel measurements.
 
 A system tray icon provides quick access to toggle visibility, open settings, or quit. All settings apply live and persist across restarts.
 
@@ -33,9 +33,14 @@ The center dot scaled up with a stroke outline, useful for highlighting a precis
 - Center dot with independent fill and stroke (color, opacity, width), toggleable on/off
 - **Pixel ruler** — tick marks along the crosshair lines with configurable spacing and major/minor sizes
 - **Distance labels** — pixel-distance readouts at major ticks with customizable color, opacity, and font size
+- **Measure mode** — click and drag to measure the distance between any two points on screen
+  - Displays total distance in pixels and signed (x, y) offset from the origin (right/up positive)
+  - Ruler ticks along the measurement line, reusing the crosshair's tick settings
+  - Hold **Ctrl** while dragging to snap the angle to 15° increments (0°, 15°, 30°, 45°, etc.)
+  - Press **Escape** to return to crosshair mode
 - All values editable via spin buttons (type exact values or use arrows)
 - Live-preview settings window with responsive layout
-- System tray icon with toggle, settings, and quit
+- System tray icon with toggle, mode switching, settings, and quit
 - Settings persist across restarts (`~/.config/crosshair-overlay/config.json`)
 - Multi-monitor support
 
@@ -62,9 +67,16 @@ python3 crosshair_overlay.py
 
 A crosshair will appear on screen following your cursor, and a tray icon will appear in your system tray. Right-click the tray icon to:
 
-- **Toggle Crosshair** — show or hide the crosshair
+- **Toggle Crosshair** — show or hide the overlay
+- **Mode: Crosshair / Measure** — switch between the cursor-following overlay and click-and-drag distance measurement
 - **Settings** — open the settings window to adjust appearance
 - **Quit** — exit the application
+
+### Measure mode
+
+Select **Measure** from the tray menu. Click and drag anywhere on screen to draw a measurement line. The label shows the total distance in pixels and the signed (x, y) offset from the click origin (right and up are positive). If tick marks are enabled, ruler ticks appear along the measurement line using the same settings as the crosshair ruler.
+
+Hold **Ctrl** while dragging to snap the line angle to the nearest 15° increment. Press **Escape** to return to crosshair mode.
 
 To stop the app from the terminal, press `Ctrl+C`.
 

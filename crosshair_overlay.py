@@ -247,12 +247,16 @@ class SettingsWindow(Gtk.Window):
 		self.overlay = overlay
 		self.cfg = cfg
 
-		self.set_default_size(660, -1)
+		self.set_default_size(700, 600)
 		self.set_position(Gtk.WindowPosition.CENTER)
 		self.connect("delete-event", self.on_delete)
 
+		scroll = Gtk.ScrolledWindow()
+		scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+		self.add(scroll)
+
 		flowbox = Gtk.FlowBox()
-		flowbox.set_homogeneous(True)
+		flowbox.set_homogeneous(False)
 		flowbox.set_column_spacing(8)
 		flowbox.set_row_spacing(8)
 		flowbox.set_margin_top(12)
@@ -262,7 +266,7 @@ class SettingsWindow(Gtk.Window):
 		flowbox.set_selection_mode(Gtk.SelectionMode.NONE)
 		flowbox.set_min_children_per_line(1)
 		flowbox.set_max_children_per_line(4)
-		self.add(flowbox)
+		scroll.add(flowbox)
 
 		# ── Crosshair Line ──
 		frame, grid = self._make_section("Crosshair Line")

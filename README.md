@@ -59,6 +59,8 @@ Settings are stored in `~/.config/crosshair-overlay/config.json` and are created
 | `line_color` | `[0.9, 0.9, 0.9]` | Crosshair line RGB (0.0 - 1.0) |
 | `line_width` | `1.0` | Line thickness in pixels |
 | `line_opacity` | `0.35` | Line opacity (0.0 - 1.0) |
+| `crosshair_fullscreen` | `true` | Lines span the full screen |
+| `crosshair_radius` | `100` | Line radius from center in pixels (when not fullscreen) |
 | `dot_color` | `[1.0, 0.3, 0.3]` | Center dot RGB (0.0 - 1.0) |
 | `dot_radius` | `2.5` | Dot radius in pixels |
 | `dot_opacity` | `0.6` | Dot opacity (0.0 - 1.0) |

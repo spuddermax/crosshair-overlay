@@ -22,6 +22,8 @@ DEFAULTS = {
 	"line_color": [0.9, 0.9, 0.9],
 	"line_width": 1.0,
 	"line_opacity": 0.35,
+	"crosshair_fullscreen": True,
+	"crosshair_radius": 100,
 	"dot_color": [1.0, 0.3, 0.3],
 	"dot_radius": 2.5,
 	"dot_opacity": 0.6,
@@ -96,6 +98,8 @@ class CrosshairOverlay(Gtk.Window):
 		r, g, b = cfg["line_color"]
 		self.line_color = (r, g, b, cfg["line_opacity"])
 		self.line_width = cfg["line_width"]
+		self.crosshair_fullscreen = cfg["crosshair_fullscreen"]
+		self.crosshair_radius = cfg["crosshair_radius"]
 		r, g, b = cfg["dot_color"]
 		self.center_dot_color = (r, g, b, cfg["dot_opacity"])
 		self.center_dot_radius = cfg["dot_radius"]
@@ -127,12 +131,20 @@ class CrosshairOverlay(Gtk.Window):
 		cr.set_line_width(self.line_width)
 
 		cr.set_source_rgba(*self.line_color)
-		cr.move_to(0, self.my)
-		cr.line_to(self.full_width, self.my)
+		if self.crosshair_fullscreen:
+			h_left, h_right = 0, self.full_width
+			v_top, v_bottom = 0, self.full_height
+		else:
+			r = self.crosshair_radius
+			h_left, h_right = self.mx - r, self.mx + r
+			v_top, v_bottom = self.my - r, self.my + r
+
+		cr.move_to(h_left, self.my)
+		cr.line_to(h_right, self.my)
 		cr.stroke()
 
-		cr.move_to(self.mx, 0)
-		cr.line_to(self.mx, self.full_height)
+		cr.move_to(self.mx, v_top)
+		cr.line_to(self.mx, v_bottom)
 		cr.stroke()
 
 		if self.center_dot_radius > 0:
@@ -196,6 +208,22 @@ class SettingsWindow(Gtk.Window):
 		grid.attach(self.line_opacity_scale, 1, row, 2, 1)
 		row += 1
 
+		self.fullscreen_check = Gtk.CheckButton(label="Full screen")
+		self.fullscreen_check.set_active(cfg["crosshair_fullscreen"])
+		self.fullscreen_check.connect("toggled", self.on_fullscreen_toggled)
+		grid.attach(self.fullscreen_check, 0, row, 3, 1)
+		row += 1
+
+		grid.attach(Gtk.Label(label="Radius", xalign=0), 0, row, 1, 1)
+		self.crosshair_radius_scale = Gtk.Scale.new_with_range(
+			Gtk.Orientation.HORIZONTAL, 5, 2000, 5)
+		self.crosshair_radius_scale.set_value(cfg["crosshair_radius"])
+		self.crosshair_radius_scale.set_hexpand(True)
+		self.crosshair_radius_scale.set_sensitive(not cfg["crosshair_fullscreen"])
+		self.crosshair_radius_scale.connect("value-changed", self.on_change)
+		grid.attach(self.crosshair_radius_scale, 1, row, 2, 1)
+		row += 1
+
 		# ── Separator ──
 		grid.attach(Gtk.Separator(), 0, row, 3, 1)
 		row += 1
@@ -231,6 +259,10 @@ class SettingsWindow(Gtk.Window):
 		self.dot_opacity_scale.connect("value-changed", self.on_change)
 		grid.attach(self.dot_opacity_scale, 1, row, 2, 1)
 
+	def on_fullscreen_toggled(self, btn):
+		self.crosshair_radius_scale.set_sensitive(not btn.get_active())
+		self.on_change()
+
 	def on_change(self, *_args):
 		lc = self.line_color_btn.get_rgba()
 		dc = self.dot_color_btn.get_rgba()
@@ -238,6 +270,8 @@ class SettingsWindow(Gtk.Window):
 			"line_color": [lc.red, lc.green, lc.blue],
 			"line_width": self.line_width_scale.get_value(),
 			"line_opacity": round(self.line_opacity_scale.get_value(), 2),
+			"crosshair_fullscreen": self.fullscreen_check.get_active(),
+			"crosshair_radius": int(self.crosshair_radius_scale.get_value()),
 			"dot_color": [dc.red, dc.green, dc.blue],
 			"dot_radius": self.dot_radius_scale.get_value(),
 			"dot_opacity": round(self.dot_opacity_scale.get_value(), 2),

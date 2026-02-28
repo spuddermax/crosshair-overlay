@@ -108,9 +108,21 @@ class CrosshairOverlay(Gtk.Window):
 
 		self.connect("draw", self.on_draw)
 
+		self.add_events(
+			Gdk.EventMask.BUTTON_PRESS_MASK |
+			Gdk.EventMask.BUTTON_RELEASE_MASK |
+			Gdk.EventMask.POINTER_MOTION_MASK)
+		self.connect("button-press-event", self.on_button_press)
+		self.connect("button-release-event", self.on_button_release)
+		self.connect("motion-notify-event", self.on_motion_notify)
+
 		self.mx = self.full_width // 2
 		self.my = self.full_height // 2
 		self.active = True
+		self.mode = "crosshair"
+		self.measure_start = None
+		self.measure_end = None
+		self.measuring = False
 		self.apply_settings(cfg)
 
 	def apply_settings(self, cfg):
@@ -144,7 +156,74 @@ class CrosshairOverlay(Gtk.Window):
 		if gdk_win:
 			gdk_win.input_shape_combine_region(cairo.Region(), 0, 0)
 
+	def disable_click_through(self):
+		gdk_win = self.get_window()
+		if gdk_win:
+			rect = cairo.RectangleInt(0, 0, self.full_width, self.full_height)
+			gdk_win.input_shape_combine_region(cairo.Region(rect), 0, 0)
+
+	def set_mode(self, mode):
+		self.mode = mode
+		if mode == "measure":
+			self.disable_click_through()
+			gdk_win = self.get_window()
+			if gdk_win:
+				gdk_win.set_cursor(
+					Gdk.Cursor.new_from_name(Gdk.Display.get_default(), "crosshair"))
+		else:
+			self.measure_start = None
+			self.measure_end = None
+			self.measuring = False
+			self.enable_click_through()
+			gdk_win = self.get_window()
+			if gdk_win:
+				gdk_win.set_cursor(None)
+		self.queue_draw()
+
+	def on_button_press(self, widget, event):
+		if self.mode != "measure" or event.button != 1:
+			return False
+		self.measure_start = (event.x_root, event.y_root)
+		self.measure_end = (event.x_root, event.y_root)
+		self.measuring = True
+		self.queue_draw()
+		return True
+
+	def _snap_endpoint(self, x1, y1, x2, y2):
+		dx = x2 - x1
+		dy = y2 - y1
+		dist = math.hypot(dx, dy)
+		if dist < 1:
+			return x2, y2
+		angle = math.atan2(dy, dx)
+		snap = math.radians(15)
+		angle = round(angle / snap) * snap
+		return x1 + dist * math.cos(angle), y1 + dist * math.sin(angle)
+
+	def on_button_release(self, widget, event):
+		if self.mode != "measure" or event.button != 1:
+			return False
+		ex, ey = event.x_root, event.y_root
+		if event.state & Gdk.ModifierType.CONTROL_MASK and self.measure_start:
+			ex, ey = self._snap_endpoint(*self.measure_start, ex, ey)
+		self.measure_end = (ex, ey)
+		self.measuring = False
+		self.queue_draw()
+		return True
+
+	def on_motion_notify(self, widget, event):
+		if self.mode != "measure" or not self.measuring:
+			return False
+		ex, ey = event.x_root, event.y_root
+		if event.state & Gdk.ModifierType.CONTROL_MASK and self.measure_start:
+			ex, ey = self._snap_endpoint(*self.measure_start, ex, ey)
+		self.measure_end = (ex, ey)
+		self.queue_draw()
+		return True
+
 	def poll_pointer(self):
+		if self.mode != "crosshair":
+			return True
 		device = Gdk.Display.get_default().get_default_seat().get_pointer()
 		_, x, y = device.get_position()
 		if x != self.mx or y != self.my:
@@ -162,8 +241,16 @@ class CrosshairOverlay(Gtk.Window):
 			return True
 
 		cr.set_operator(cairo.Operator.OVER)
-		cr.set_line_width(self.line_width)
 
+		if self.mode == "crosshair":
+			self._draw_crosshair(cr)
+		elif self.mode == "measure":
+			self._draw_measurement(cr)
+
+		return True
+
+	def _draw_crosshair(self, cr):
+		cr.set_line_width(self.line_width)
 		cr.set_source_rgba(*self.line_color)
 		if self.crosshair_fullscreen:
 			h_left, h_right = 0, self.full_width
@@ -253,7 +340,94 @@ class CrosshairOverlay(Gtk.Window):
 			else:
 				cr.new_path()
 
-		return True
+	def _draw_measurement(self, cr):
+		if self.measure_start is None or self.measure_end is None:
+			return
+
+		x1, y1 = self.measure_start
+		x2, y2 = self.measure_end
+
+		# Draw the measurement line
+		cr.set_line_width(self.line_width)
+		cr.set_source_rgba(*self.line_color)
+		cr.move_to(x1, y1)
+		cr.line_to(x2, y2)
+		cr.stroke()
+
+		# Draw endpoint dots
+		dot_r = max(3, self.line_width * 1.5)
+		for px, py in ((x1, y1), (x2, y2)):
+			cr.new_path()
+			cr.arc(px, py, dot_r, 0, 2 * math.pi)
+			cr.set_source_rgba(*self.line_color)
+			cr.fill()
+
+		# Ruler ticks along the measurement line
+		dx = x2 - x1
+		dy = y2 - y1
+		dist = math.hypot(dx, dy)
+		if dist < 1:
+			return
+
+		if self.tick_enabled and self.tick_spacing >= 5:
+			cr.save()
+			ux, uy = dx / dist, dy / dist
+			px, py = -uy, ux  # perpendicular
+			steps = int(dist / self.tick_spacing)
+			for i in range(1, steps + 1):
+				t = i * self.tick_spacing
+				tx = x1 + ux * t
+				ty = y1 + uy * t
+				is_major = (self.tick_major_every > 0 and
+					i % self.tick_major_every == 0)
+				length = (self.tick_major_length if is_major
+					else self.tick_minor_length)
+				half = length / 2
+				cr.set_line_width(max(1, self.line_width * 0.6))
+				cr.set_source_rgba(*self.tick_color)
+				cr.move_to(tx - px * half, ty - py * half)
+				cr.line_to(tx + px * half, ty + py * half)
+				cr.stroke()
+				if is_major and self.tick_labels:
+					lbl = "%d" % int(t)
+					cr.select_font_face("sans-serif",
+						cairo.FONT_SLANT_NORMAL,
+						cairo.FONT_WEIGHT_NORMAL)
+					cr.set_font_size(self.tick_label_size)
+					cr.set_source_rgba(*self.tick_label_color)
+					ext_t = cr.text_extents(lbl)
+					off = half + 2 + ext_t.height / 2
+					cr.move_to(tx + px * off - ext_t.width / 2,
+						ty + py * off + ext_t.height / 2)
+					cr.show_text(lbl)
+			cr.restore()
+
+		# Distance label at midpoint
+
+		label = "%.1f px (%d, %d)" % (dist, int(dx), int(-dy))
+		mid_x = (x1 + x2) / 2
+		mid_y = (y1 + y2) / 2
+
+		cr.select_font_face("sans-serif",
+			cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+		cr.set_font_size(13)
+		ext = cr.text_extents(label)
+
+		pad = 4
+		bg_x = mid_x - ext.width / 2 - pad
+		bg_y = mid_y - 12 - ext.height - pad
+		bg_w = ext.width + pad * 2
+		bg_h = ext.height + pad * 2
+
+		# Dark background
+		cr.set_source_rgba(0, 0, 0, 0.7)
+		cr.rectangle(bg_x, bg_y, bg_w, bg_h)
+		cr.fill()
+
+		# Label text
+		cr.set_source_rgba(1, 1, 1, 0.95)
+		cr.move_to(mid_x - ext.width / 2, mid_y - 12)
+		cr.show_text(label)
 
 
 # ── Settings Window ─────────────────────────────────────────────────────────
@@ -508,6 +682,23 @@ class TrayIcon:
 		item_toggle.connect("activate", self.on_toggle)
 		menu.append(item_toggle)
 
+		# Mode submenu
+		mode_item = Gtk.MenuItem(label="Mode")
+		mode_menu = Gtk.Menu()
+		mode_item.set_submenu(mode_menu)
+
+		self.radio_crosshair = Gtk.RadioMenuItem(label="Crosshair")
+		self.radio_crosshair.set_active(True)
+		self.radio_crosshair.connect("toggled", self.on_mode_changed, "crosshair")
+		mode_menu.append(self.radio_crosshair)
+
+		self.radio_measure = Gtk.RadioMenuItem.new_with_label_from_widget(
+			self.radio_crosshair, "Measure")
+		self.radio_measure.connect("toggled", self.on_mode_changed, "measure")
+		mode_menu.append(self.radio_measure)
+
+		menu.append(mode_item)
+
 		item_settings = Gtk.MenuItem(label="Settings")
 		item_settings.connect("activate", self.on_settings)
 		menu.append(item_settings)
@@ -525,7 +716,13 @@ class TrayIcon:
 		self.overlay.active = not self.overlay.active
 		self.overlay.queue_draw()
 
+	def on_mode_changed(self, item, mode):
+		if item.get_active():
+			self.overlay.set_mode(mode)
+
 	def on_settings(self, _item):
+		if self.overlay.mode != "crosshair":
+			self.radio_crosshair.set_active(True)
 		self.settings_win.show_all()
 		self.settings_win.present()
 

@@ -105,7 +105,12 @@ python windows\crosshair_overlay.py
 
 ## Controls
 
-A crosshair will appear on screen following your cursor, and a tray icon will appear in your system tray. Use the tray menu to:
+A crosshair will appear on screen following your cursor, and a tray icon will appear in your system tray.
+
+- **Linux:** Left-click the tray icon to open the menu.
+- **Windows:** Right-click the tray icon to open the menu.
+
+The tray menu contains:
 
 - **Toggle Crosshair** — show or hide the overlay
 - **Mode: Crosshair / Measure** — switch between the cursor-following overlay and click-and-drag distance measurement

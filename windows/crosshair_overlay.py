@@ -7,6 +7,8 @@ import ctypes.wintypes as wt
 import json
 import math
 import os
+import shutil
+import subprocess
 import sys
 import threading
 
@@ -20,6 +22,7 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 FAVORITES_FILE = os.path.join(CONFIG_DIR, "favorites.json")
 
 DEFAULTS = {
+	"auto_start": False,
 	"line_color": [0.9, 0.9, 0.9],
 	"line_width": 1.0,
 	"line_opacity": 0.35,
@@ -83,6 +86,80 @@ def save_favorites(favs):
 			json.dump(favs, f, indent=2)
 	except OSError as e:
 		print(f"crosshair-overlay: failed to save favorites: {e}", file=sys.stderr)
+
+
+# ── Autostart (Registry) ────────────────────────────────────────────────────
+
+import winreg
+
+REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+REGISTRY_VALUE_NAME = "CrosshairOverlay"
+
+
+def _get_exe_path():
+	"""Return the command to launch the app for the registry Run key."""
+	if getattr(sys, "frozen", False):
+		# Running as PyInstaller bundle
+		return sys.executable
+	return f'"{sys.executable}" "{os.path.realpath(sys.argv[0])}"'
+
+
+def _set_autostart(enabled):
+	"""Add or remove the startup registry entry under HKCU."""
+	try:
+		key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY, 0,
+			winreg.KEY_SET_VALUE)
+		if enabled:
+			winreg.SetValueEx(key, REGISTRY_VALUE_NAME, 0, winreg.REG_SZ,
+				_get_exe_path())
+		else:
+			try:
+				winreg.DeleteValue(key, REGISTRY_VALUE_NAME)
+			except FileNotFoundError:
+				pass
+		winreg.CloseKey(key)
+	except OSError as e:
+		print(f"crosshair-overlay: registry error: {e}", file=sys.stderr)
+
+
+def _get_autostart():
+	"""Check if the startup registry entry exists."""
+	try:
+		key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY, 0,
+			winreg.KEY_READ)
+		winreg.QueryValueEx(key, REGISTRY_VALUE_NAME)
+		winreg.CloseKey(key)
+		return True
+	except (FileNotFoundError, OSError):
+		return False
+
+
+def _uninstall(overlay_hwnd):
+	"""Remove config, autostart entry, and Inno Setup package (if installed), then quit."""
+	# Remove autostart registry entry
+	_set_autostart(False)
+
+	# Remove config directory
+	if os.path.isdir(CONFIG_DIR):
+		shutil.rmtree(CONFIG_DIR, ignore_errors=True)
+
+	# If installed via Inno Setup, launch the uninstaller silently
+	try:
+		key = winreg.OpenKey(
+			winreg.HKEY_CURRENT_USER,
+			r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Crosshair Overlay_is1",
+			0, winreg.KEY_READ)
+		uninstall_str, _ = winreg.QueryValueEx(key, "UninstallString")
+		winreg.CloseKey(key)
+		# Strip surrounding quotes if present
+		uninstall_exe = uninstall_str.strip('"')
+		subprocess.Popen([uninstall_exe, "/SILENT"])
+	except (FileNotFoundError, OSError):
+		pass
+
+	# Post quit message to close the overlay
+	user32 = ctypes.windll.user32
+	user32.PostMessageW(overlay_hwnd, 0x0400 + 3, 0, 0)  # WM_APP_QUIT
 
 
 # ── Win32 Constants ─────────────────────────────────────────────────────────
@@ -430,7 +507,7 @@ def draw_string(graphics, text, font, brush, x, y, fmt):
 
 class CrosshairOverlay:
 	def __init__(self, cfg):
-		self.cfg = dict(cfg)
+		self.cfg = cfg
 		self.active = True
 		self.mode = "crosshair"
 		self.mx = 0
@@ -477,7 +554,7 @@ class CrosshairOverlay:
 		self._redraw()
 
 	def apply_settings(self, cfg):
-		self.cfg = dict(cfg)
+		self.cfg.update(cfg)
 		if self.hwnd:
 			self._redraw()
 
@@ -875,7 +952,7 @@ class SettingsWindow:
 	def __init__(self, overlay, cfg, favorites):
 		self.overlay = overlay
 		self.overlay_hwnd = overlay.hwnd
-		self.cfg = dict(cfg)
+		self.cfg = cfg
 		self.favorites = favorites
 		self.favorites_changed_cb = None
 		self._root = None
@@ -905,6 +982,7 @@ class SettingsWindow:
 				entry[1].set(self.cfg[key])
 			elif entry[0] == "check":
 				entry[1].set(self.cfg[key])
+		self._auto_start_var.set(_get_autostart())
 		self._root.deiconify()
 		self._root.lift()
 
@@ -1021,6 +1099,22 @@ class SettingsWindow:
 		self._fav_list_frame = tk.Frame(frame, bg=self.BG_SECTION)
 		self._fav_list_frame.pack(fill="x", pady=(4, 0))
 		self._rebuild_favorites_list()
+
+		# ── General ──
+		frame = self._make_section("General")
+		self._sections.append(frame)
+
+		self._auto_start_var = tk.BooleanVar(value=_get_autostart())
+		chk = tk.Checkbutton(frame, text="Start at login",
+			variable=self._auto_start_var,
+			bg=self.BG_SECTION, fg=self.FG,
+			activebackground=self.BG_SECTION, activeforeground=self.FG,
+			selectcolor=self.BG_INPUT, highlightthickness=0,
+			command=self._on_auto_start_toggled)
+		chk.pack(anchor="w", pady=2)
+
+		self._make_button(frame, "Uninstall", self._on_uninstall_clicked).pack(
+			anchor="w", pady=(6, 2))
 
 		# Flow layout: reflow sections into grid on resize
 		self._section_min_width = SECTION_MIN_WIDTH
@@ -1213,6 +1307,21 @@ class SettingsWindow:
 			self._widgets[key] = ("color", btn, new_val)
 			self._on_change()
 
+	def _on_auto_start_toggled(self):
+		enabled = self._auto_start_var.get()
+		_set_autostart(enabled)
+		self.cfg["auto_start"] = enabled
+		self._schedule_save()
+
+	def _on_uninstall_clicked(self):
+		from tkinter import messagebox
+		if messagebox.askyesno(
+				"Uninstall",
+				"This will remove Crosshair Overlay, its configuration, "
+				"and startup entry. Continue?",
+				parent=self._root):
+			_uninstall(self.overlay_hwnd)
+
 	def _on_change(self):
 		if self._loading:
 			return
@@ -1301,8 +1410,6 @@ class TrayIcon:
 			if self._current_mode != "crosshair":
 				self._current_mode = "crosshair"
 				user32.PostMessageW(self.overlay.hwnd, WM_APP_MODE, 0, 0)
-			# Share the cfg dict so settings window reads/writes current state
-			self.settings_win.cfg = self.overlay.cfg
 			self.settings_win.show()
 
 		def on_quit(icon, item):

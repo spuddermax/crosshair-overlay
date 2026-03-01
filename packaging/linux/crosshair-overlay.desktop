@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Crosshair Overlay
+Comment=Screen crosshair overlay with pixel ruler and measure mode
+Exec=crosshair-overlay
+Icon=crosshair-overlay
+Type=Application
+Categories=Utility;Accessibility;
+Terminal=false

@@ -1,3 +1,5 @@
 __pycache__/
 *.py~
 *.pyc
+packaging/windows/build/
+packaging/windows/dist/

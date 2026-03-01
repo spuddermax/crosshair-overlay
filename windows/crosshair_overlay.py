@@ -1008,19 +1008,6 @@ class SettingsWindow:
 		SECTION_MIN_WIDTH = 300
 		PAD = 10
 
-		# ── General ──
-		frame = self._make_section("General")
-		self._sections.append(frame)
-
-		self._auto_start_var = tk.BooleanVar(value=_get_autostart())
-		chk = tk.Checkbutton(frame, text="Start at login",
-			variable=self._auto_start_var,
-			bg=self.BG_SECTION, fg=self.FG,
-			activebackground=self.BG_SECTION, activeforeground=self.FG,
-			selectcolor=self.BG_INPUT, highlightthickness=0,
-			command=self._on_auto_start_toggled)
-		chk.pack(anchor="w", pady=2)
-
 		# ── Crosshair Line ──
 		frame = self._make_section("Crosshair Line")
 		self._sections.append(frame)
@@ -1082,6 +1069,19 @@ class SettingsWindow:
 		self._fav_list_frame = tk.Frame(frame, bg=self.BG_SECTION)
 		self._fav_list_frame.pack(fill="x", pady=(4, 0))
 		self._rebuild_favorites_list()
+
+		# ── General ──
+		frame = self._make_section("General")
+		self._sections.append(frame)
+
+		self._auto_start_var = tk.BooleanVar(value=_get_autostart())
+		chk = tk.Checkbutton(frame, text="Start at login",
+			variable=self._auto_start_var,
+			bg=self.BG_SECTION, fg=self.FG,
+			activebackground=self.BG_SECTION, activeforeground=self.FG,
+			selectcolor=self.BG_INPUT, highlightthickness=0,
+			command=self._on_auto_start_toggled)
+		chk.pack(anchor="w", pady=2)
 
 		# Flow layout: reflow sections into grid on resize
 		self._section_min_width = SECTION_MIN_WIDTH

@@ -915,24 +915,29 @@ class SettingsWindow:
 		root.geometry("1100x580")
 		root.resizable(True, True)
 
-		canvas = tk.Canvas(root)
+		self._canvas = canvas = tk.Canvas(root)
 		scrollbar = tk.Scrollbar(root, orient="vertical", command=canvas.yview)
-		scroll_frame = tk.Frame(canvas)
+		self._flow_frame = tk.Frame(canvas)
 
-		scroll_frame.bind("<Configure>",
+		self._flow_frame.bind("<Configure>",
 			lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-		canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+		self._canvas_window = canvas.create_window((0, 0), window=self._flow_frame, anchor="nw")
 		canvas.configure(yscrollcommand=scrollbar.set)
 
 		canvas.pack(side="left", fill="both", expand=True)
 		scrollbar.pack(side="right", fill="y")
 
 		self._widgets = {}
+		self._sections = []
+		self._flow_cols = 0
 		cfg = self.cfg
 
+		SECTION_MIN_WIDTH = 300
+		PAD = 10
+
 		# ── Crosshair Line ──
-		frame = tk.LabelFrame(scroll_frame, text="Crosshair Line", padx=10, pady=8)
-		frame.pack(fill="x", padx=10, pady=5)
+		frame = tk.LabelFrame(self._flow_frame, text="Crosshair Line", padx=10, pady=8)
+		self._sections.append(frame)
 
 		self._add_color_row(frame, "line_color", "Color", cfg["line_color"])
 		self._add_spin_row(frame, "line_width", "Width", 0.5, 10.0, 0.5, cfg["line_width"])
@@ -941,8 +946,8 @@ class SettingsWindow:
 		self._add_spin_row(frame, "crosshair_radius", "Radius", 5, 2000, 1, cfg["crosshair_radius"])
 
 		# ── Center Dot ──
-		frame = tk.LabelFrame(scroll_frame, text="Center Dot", padx=10, pady=8)
-		frame.pack(fill="x", padx=10, pady=5)
+		frame = tk.LabelFrame(self._flow_frame, text="Center Dot", padx=10, pady=8)
+		self._sections.append(frame)
 
 		self._add_check_row(frame, "dot_enabled", "Enable", cfg["dot_enabled"])
 		self._add_spin_row(frame, "dot_radius", "Radius", 1, 2000, 1, cfg["dot_radius"])
@@ -953,8 +958,8 @@ class SettingsWindow:
 		self._add_spin_row(frame, "dot_stroke_width", "Stroke width", 0.5, 10.0, 0.5, cfg["dot_stroke_width"])
 
 		# ── Tick Marks ──
-		frame = tk.LabelFrame(scroll_frame, text="Tick Marks", padx=10, pady=8)
-		frame.pack(fill="x", padx=10, pady=5)
+		frame = tk.LabelFrame(self._flow_frame, text="Tick Marks", padx=10, pady=8)
+		self._sections.append(frame)
 
 		self._add_check_row(frame, "tick_enabled", "Enable", cfg["tick_enabled"])
 		self._add_color_row(frame, "tick_color", "Color", cfg["tick_color"])
@@ -965,8 +970,8 @@ class SettingsWindow:
 		self._add_spin_row(frame, "tick_major_length", "Major length", 1.0, 40.0, 0.5, cfg["tick_major_length"])
 
 		# ── Tick Labels ──
-		frame = tk.LabelFrame(scroll_frame, text="Tick Labels", padx=10, pady=8)
-		frame.pack(fill="x", padx=10, pady=5)
+		frame = tk.LabelFrame(self._flow_frame, text="Tick Labels", padx=10, pady=8)
+		self._sections.append(frame)
 
 		self._add_check_row(frame, "tick_labels", "Enable", cfg["tick_labels"])
 		self._add_color_row(frame, "tick_label_color", "Color", cfg["tick_label_color"])
@@ -974,10 +979,10 @@ class SettingsWindow:
 		self._add_spin_row(frame, "tick_label_size", "Size", 6.0, 24.0, 1.0, cfg["tick_label_size"])
 
 		# ── Favorites ──
-		fav_frame = tk.LabelFrame(scroll_frame, text="Favorites", padx=10, pady=8)
-		fav_frame.pack(fill="x", padx=10, pady=5)
+		frame = tk.LabelFrame(self._flow_frame, text="Favorites", padx=10, pady=8)
+		self._sections.append(frame)
 
-		save_row = tk.Frame(fav_frame)
+		save_row = tk.Frame(frame)
 		save_row.pack(fill="x", pady=2)
 		self._fav_name_var = tk.StringVar()
 		fav_entry = tk.Entry(save_row, textvariable=self._fav_name_var)
@@ -985,14 +990,42 @@ class SettingsWindow:
 		fav_entry.bind("<Return>", lambda e: self._save_favorite_from_entry())
 		tk.Button(save_row, text="Save", command=self._save_favorite_from_entry).pack(side="left")
 
-		self._fav_list_frame = tk.Frame(fav_frame)
+		self._fav_list_frame = tk.Frame(frame)
 		self._fav_list_frame.pack(fill="x", pady=(4, 0))
 		self._rebuild_favorites_list()
+
+		# Flow layout: reflow sections into grid on resize
+		self._section_min_width = SECTION_MIN_WIDTH
+		self._pad = PAD
+		canvas.bind("<Configure>", self._on_canvas_resize)
+		self._reflow_sections(root.winfo_reqwidth())
 
 		root.protocol("WM_DELETE_WINDOW", self._on_close)
 		root.withdraw()  # Start hidden
 		self._ready.set()
 		root.mainloop()
+
+	def _on_canvas_resize(self, event):
+		width = event.width
+		self._canvas.itemconfig(self._canvas_window, width=width)
+		self._reflow_sections(width)
+
+	def _reflow_sections(self, available_width):
+		cols = max(1, available_width // (self._section_min_width + self._pad * 2))
+		if cols == self._flow_cols:
+			return
+		self._flow_cols = cols
+
+		for s in self._sections:
+			s.grid_forget()
+
+		for i, section in enumerate(self._sections):
+			r, c = divmod(i, cols)
+			section.grid(row=r, column=c, sticky="nsew",
+				padx=self._pad, pady=self._pad // 2)
+
+		for c in range(cols):
+			self._flow_frame.columnconfigure(c, weight=1)
 
 	def _rebuild_favorites_list(self):
 		for child in self._fav_list_frame.winfo_children():

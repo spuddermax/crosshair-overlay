@@ -1,7 +1,9 @@
 @echo off
 setlocal
 
-echo === Building Crosshair Overlay ===
+set VERSION=0.6.0
+
+echo === Building Crosshair Overlay v%VERSION% ===
 
 REM Check for icon, generate if missing
 if not exist "crosshair-overlay.ico" (
@@ -20,25 +22,29 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Rename the exe to include the version
+if exist "dist\CrosshairOverlay-%VERSION%.exe" del "dist\CrosshairOverlay-%VERSION%.exe"
+rename "dist\CrosshairOverlay.exe" "CrosshairOverlay-%VERSION%.exe"
+
 echo.
 echo === Build complete ===
-echo Executable: dist\CrosshairOverlay.exe
+echo Executable: dist\CrosshairOverlay-%VERSION%.exe
 
 REM Check for Inno Setup compiler
 where iscc >nul 2>&1
 if %errorlevel% equ 0 (
     echo.
     echo Running Inno Setup compiler...
-    iscc installer.iss
+    iscc /DAPP_VERSION=%VERSION% installer.iss
     if errorlevel 1 (
         echo ERROR: Inno Setup compilation failed.
         exit /b 1
     )
-    echo Installer: Output\CrosshairOverlay-0.6.0-Setup.exe
+    echo Installer: Output\CrosshairOverlay-%VERSION%-Setup.exe
 ) else (
     echo.
     echo Inno Setup compiler (iscc) not found on PATH.
-    echo To build the installer, install Inno Setup and run: iscc installer.iss
+    echo To build the installer, install Inno Setup and run: iscc /DAPP_VERSION=%VERSION% installer.iss
 )
 
 endlocal

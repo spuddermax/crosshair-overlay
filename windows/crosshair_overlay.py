@@ -872,8 +872,9 @@ class CrosshairOverlay:
 # ── Settings Window (tkinter) ──────────────────────────────────────────────
 
 class SettingsWindow:
-	def __init__(self, overlay_hwnd, cfg, favorites):
-		self.overlay_hwnd = overlay_hwnd
+	def __init__(self, overlay, cfg, favorites):
+		self.overlay = overlay
+		self.overlay_hwnd = overlay.hwnd
 		self.cfg = dict(cfg)
 		self.favorites = favorites
 		self.favorites_changed_cb = None
@@ -1105,6 +1106,9 @@ class SettingsWindow:
 			return
 		saved = self.favorites[name]
 		self.cfg.update(saved)
+		# Push to overlay and save
+		self.overlay.apply_settings(self.cfg)
+		save_config(self.cfg)
 		# Update widgets if settings window is built
 		if self._root:
 			self._root.after(0, self._update_widgets_from_cfg)
@@ -1363,7 +1367,7 @@ if __name__ == "__main__":
 	favs = load_favorites()
 
 	overlay = CrosshairOverlay(cfg)
-	settings_win = SettingsWindow(overlay.hwnd, cfg, favs)
+	settings_win = SettingsWindow(overlay, cfg, favs)
 	tray = TrayIcon(overlay, settings_win)
 	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
 	tray.start()

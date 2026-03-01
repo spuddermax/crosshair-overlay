@@ -507,7 +507,7 @@ def draw_string(graphics, text, font, brush, x, y, fmt):
 
 class CrosshairOverlay:
 	def __init__(self, cfg):
-		self.cfg = dict(cfg)
+		self.cfg = cfg
 		self.active = True
 		self.mode = "crosshair"
 		self.mx = 0
@@ -554,7 +554,7 @@ class CrosshairOverlay:
 		self._redraw()
 
 	def apply_settings(self, cfg):
-		self.cfg = dict(cfg)
+		self.cfg.update(cfg)
 		if self.hwnd:
 			self._redraw()
 
@@ -952,7 +952,7 @@ class SettingsWindow:
 	def __init__(self, overlay, cfg, favorites):
 		self.overlay = overlay
 		self.overlay_hwnd = overlay.hwnd
-		self.cfg = dict(cfg)
+		self.cfg = cfg
 		self.favorites = favorites
 		self.favorites_changed_cb = None
 		self._root = None
@@ -1410,8 +1410,6 @@ class TrayIcon:
 			if self._current_mode != "crosshair":
 				self._current_mode = "crosshair"
 				user32.PostMessageW(self.overlay.hwnd, WM_APP_MODE, 0, 0)
-			# Share the cfg dict so settings window reads/writes current state
-			self.settings_win.cfg = self.overlay.cfg
 			self.settings_win.show()
 
 		def on_quit(icon, item):

@@ -83,8 +83,6 @@ sudo dpkg -r crosshair-overlay
 
 Download `CrosshairOverlay-1.0.0.exe` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and run it — no installation required.
 
-An installer (`CrosshairOverlay-1.0.0-Setup.exe`) is also available if you prefer a Start Menu shortcut and optional start-at-login.
-
 ### From source
 
 #### Linux

@@ -10,6 +10,8 @@ import cairo
 import json
 import math
 import os
+import shutil
+import subprocess
 import sys
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -102,6 +104,35 @@ def ensure_tray_icon():
 	)
 	with open(ICON_FILE, "w") as f:
 		f.write(svg)
+
+
+AUTOSTART_DIR = os.path.join(
+	os.environ.get("XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")),
+	"autostart",
+)
+AUTOSTART_FILE = os.path.join(AUTOSTART_DIR, "crosshair-overlay.desktop")
+
+
+def _uninstall():
+	"""Remove config, autostart entry, and deb package (if installed), then quit."""
+	# Remove autostart desktop entry
+	try:
+		os.remove(AUTOSTART_FILE)
+	except FileNotFoundError:
+		pass
+
+	# Remove config directory
+	if os.path.isdir(CONFIG_DIR):
+		shutil.rmtree(CONFIG_DIR, ignore_errors=True)
+
+	# If installed via deb package, remove it
+	if os.path.isfile("/usr/bin/crosshair-overlay"):
+		try:
+			subprocess.Popen(["pkexec", "dpkg", "-r", "crosshair-overlay"])
+		except OSError:
+			pass
+
+	Gtk.main_quit()
 
 
 # ── Crosshair Overlay ──────────────────────────────────────────────────────
@@ -629,6 +660,27 @@ class SettingsWindow(Gtk.Window):
 		self.fav_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
 		fav_box.pack_start(self.fav_listbox, True, True, 0)
 		self._rebuild_favorites_list()
+
+		# ── General ──
+		frame, grid = self._make_section("General")
+		flowbox.add(frame)
+		row = 0
+
+		uninstall_btn = Gtk.Button(label="Uninstall")
+		uninstall_btn.connect("clicked", self.on_uninstall_clicked)
+		grid.attach(uninstall_btn, 0, row, 2, 1)
+
+	def on_uninstall_clicked(self, _btn):
+		dialog = Gtk.MessageDialog(
+			transient_for=self, modal=True,
+			message_type=Gtk.MessageType.WARNING,
+			buttons=Gtk.ButtonsType.YES_NO,
+			text="This will remove Crosshair Overlay, its configuration, "
+				"and autostart entry. Continue?")
+		response = dialog.run()
+		dialog.destroy()
+		if response == Gtk.ResponseType.YES:
+			_uninstall()
 
 	def _rebuild_favorites_list(self):
 		for child in self.fav_listbox.get_children():

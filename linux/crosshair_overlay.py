@@ -645,7 +645,7 @@ class SettingsWindow(Gtk.Window):
 			row.pack_start(load_btn, True, True, 0)
 			update_btn = Gtk.Button(label="\u21bb")
 			update_btn.set_tooltip_text("Update to current settings")
-			update_btn.connect("clicked", lambda _b, n=name: self._save_favorite(n))
+			update_btn.connect("clicked", lambda _b, n=name: self._confirm_update_favorite(n))
 			row.pack_start(update_btn, False, False, 0)
 			del_btn = Gtk.Button(label="\u00d7")
 			del_btn.set_tooltip_text("Delete")
@@ -660,6 +660,17 @@ class SettingsWindow(Gtk.Window):
 			return
 		self._save_favorite(name)
 		self.fav_name_entry.set_text("")
+
+	def _confirm_update_favorite(self, name):
+		dialog = Gtk.MessageDialog(
+			transient_for=self, modal=True,
+			message_type=Gtk.MessageType.QUESTION,
+			buttons=Gtk.ButtonsType.YES_NO,
+			text=f'Update "{name}" to current settings?')
+		response = dialog.run()
+		dialog.destroy()
+		if response == Gtk.ResponseType.YES:
+			self._save_favorite(name)
 
 	def _save_favorite(self, name):
 		self.favorites[name] = dict(self.cfg)

@@ -898,7 +898,7 @@ class SettingsWindow:
 				_, btn, _ = entry
 				r, g, b = self.cfg[key]
 				hex_color = "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
-				btn.configure(bg=hex_color)
+				btn.configure(bg=hex_color, activebackground=hex_color)
 				self._widgets[key] = ("color", btn, [r, g, b])
 			elif entry[0] == "spin":
 				entry[1].set(self.cfg[key])
@@ -907,6 +907,17 @@ class SettingsWindow:
 		self._root.deiconify()
 		self._root.lift()
 
+	# Dark theme colors
+	BG = "#2b2b2b"
+	BG_SECTION = "#333333"
+	BG_INPUT = "#3c3c3c"
+	FG = "#cccccc"
+	FG_DIM = "#999999"
+	BORDER = "#555555"
+	ACCENT = "#5294e2"
+	BG_BTN = "#444444"
+	BG_BTN_ACTIVE = "#555555"
+
 	def _run(self):
 		import tkinter as tk
 
@@ -914,10 +925,23 @@ class SettingsWindow:
 		root.title("Crosshair Settings")
 		root.geometry("1100x580")
 		root.resizable(True, True)
+		root.configure(bg=self.BG)
 
-		self._canvas = canvas = tk.Canvas(root)
+		# Apply dark theme defaults to all widget classes
+		root.option_add("*Background", self.BG)
+		root.option_add("*Foreground", self.FG)
+		root.option_add("*activeBackground", self.BG_BTN_ACTIVE)
+		root.option_add("*activeForeground", self.FG)
+		root.option_add("*selectBackground", self.ACCENT)
+		root.option_add("*selectForeground", "#ffffff")
+		root.option_add("*highlightBackground", self.BG)
+		root.option_add("*highlightColor", self.BORDER)
+		root.option_add("*troughColor", self.BG_INPUT)
+		root.option_add("*insertBackground", self.FG)
+
+		self._canvas = canvas = tk.Canvas(root, bg=self.BG, highlightthickness=0)
 		scrollbar = tk.Scrollbar(root, orient="vertical", command=canvas.yview)
-		self._flow_frame = tk.Frame(canvas)
+		self._flow_frame = tk.Frame(canvas, bg=self.BG)
 
 		self._flow_frame.bind("<Configure>",
 			lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
@@ -936,7 +960,7 @@ class SettingsWindow:
 		PAD = 10
 
 		# ── Crosshair Line ──
-		frame = tk.LabelFrame(self._flow_frame, text="Crosshair Line", padx=10, pady=8)
+		frame = self._make_section("Crosshair Line")
 		self._sections.append(frame)
 
 		self._add_color_row(frame, "line_color", "Color", cfg["line_color"])
@@ -946,7 +970,7 @@ class SettingsWindow:
 		self._add_spin_row(frame, "crosshair_radius", "Radius", 5, 2000, 1, cfg["crosshair_radius"])
 
 		# ── Center Dot ──
-		frame = tk.LabelFrame(self._flow_frame, text="Center Dot", padx=10, pady=8)
+		frame = self._make_section("Center Dot")
 		self._sections.append(frame)
 
 		self._add_check_row(frame, "dot_enabled", "Enable", cfg["dot_enabled"])
@@ -958,7 +982,7 @@ class SettingsWindow:
 		self._add_spin_row(frame, "dot_stroke_width", "Stroke width", 0.5, 10.0, 0.5, cfg["dot_stroke_width"])
 
 		# ── Tick Marks ──
-		frame = tk.LabelFrame(self._flow_frame, text="Tick Marks", padx=10, pady=8)
+		frame = self._make_section("Tick Marks")
 		self._sections.append(frame)
 
 		self._add_check_row(frame, "tick_enabled", "Enable", cfg["tick_enabled"])
@@ -970,7 +994,7 @@ class SettingsWindow:
 		self._add_spin_row(frame, "tick_major_length", "Major length", 1.0, 40.0, 0.5, cfg["tick_major_length"])
 
 		# ── Tick Labels ──
-		frame = tk.LabelFrame(self._flow_frame, text="Tick Labels", padx=10, pady=8)
+		frame = self._make_section("Tick Labels")
 		self._sections.append(frame)
 
 		self._add_check_row(frame, "tick_labels", "Enable", cfg["tick_labels"])
@@ -979,18 +1003,21 @@ class SettingsWindow:
 		self._add_spin_row(frame, "tick_label_size", "Size", 6.0, 24.0, 1.0, cfg["tick_label_size"])
 
 		# ── Favorites ──
-		frame = tk.LabelFrame(self._flow_frame, text="Favorites", padx=10, pady=8)
+		frame = self._make_section("Favorites")
 		self._sections.append(frame)
 
-		save_row = tk.Frame(frame)
+		save_row = tk.Frame(frame, bg=self.BG_SECTION)
 		save_row.pack(fill="x", pady=2)
 		self._fav_name_var = tk.StringVar()
-		fav_entry = tk.Entry(save_row, textvariable=self._fav_name_var)
+		fav_entry = tk.Entry(save_row, textvariable=self._fav_name_var,
+			bg=self.BG_INPUT, fg=self.FG, insertbackground=self.FG,
+			relief="flat", highlightthickness=1, highlightcolor=self.BORDER,
+			highlightbackground=self.BORDER)
 		fav_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
 		fav_entry.bind("<Return>", lambda e: self._save_favorite_from_entry())
-		tk.Button(save_row, text="Save", command=self._save_favorite_from_entry).pack(side="left")
+		self._make_button(save_row, "Save", self._save_favorite_from_entry).pack(side="left")
 
-		self._fav_list_frame = tk.Frame(frame)
+		self._fav_list_frame = tk.Frame(frame, bg=self.BG_SECTION)
 		self._fav_list_frame.pack(fill="x", pady=(4, 0))
 		self._rebuild_favorites_list()
 
@@ -1030,16 +1057,16 @@ class SettingsWindow:
 	def _rebuild_favorites_list(self):
 		for child in self._fav_list_frame.winfo_children():
 			child.destroy()
+		import tkinter as tk
 		for name in sorted(self.favorites):
-			row = self._fav_list_frame.__class__(self._fav_list_frame)
+			row = tk.Frame(self._fav_list_frame, bg=self.BG_SECTION)
 			row.pack(fill="x", pady=1)
-			import tkinter as tk
-			tk.Button(row, text=name, anchor="w", relief="flat",
-				command=lambda n=name: self._load_favorite(n)).pack(side="left", fill="x", expand=True)
-			tk.Button(row, text="\u21bb", width=3,
-				command=lambda n=name: self._save_favorite(n)).pack(side="left", padx=(2, 0))
-			tk.Button(row, text="\u00d7", width=3,
-				command=lambda n=name: self._delete_favorite(n)).pack(side="left", padx=(2, 0))
+			self._make_button(row, name, lambda n=name: self._load_favorite(n),
+				relief="flat", anchor="w").pack(side="left", fill="x", expand=True)
+			self._make_button(row, "\u21bb",
+				lambda n=name: self._confirm_update_favorite(n), width=3).pack(side="left", padx=(2, 0))
+			self._make_button(row, "\u00d7",
+				lambda n=name: self._delete_favorite(n), width=3).pack(side="left", padx=(2, 0))
 
 	def _save_favorite_from_entry(self):
 		name = self._fav_name_var.get().strip()
@@ -1047,6 +1074,12 @@ class SettingsWindow:
 			return
 		self._save_favorite(name)
 		self._fav_name_var.set("")
+
+	def _confirm_update_favorite(self, name):
+		from tkinter import messagebox
+		if messagebox.askyesno("Update Favorite",
+				f'Update "{name}" to current settings?', parent=self._root):
+			self._save_favorite(name)
 
 	def _save_favorite(self, name):
 		self.favorites[name] = dict(self.cfg)
@@ -1083,7 +1116,7 @@ class SettingsWindow:
 				_, btn, _ = entry
 				r, g, b = self.cfg[key]
 				hex_color = "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
-				btn.configure(bg=hex_color)
+				btn.configure(bg=hex_color, activebackground=hex_color)
 				self._widgets[key] = ("color", btn, [r, g, b])
 			elif entry[0] == "spin":
 				entry[1].set(self.cfg[key])
@@ -1094,15 +1127,34 @@ class SettingsWindow:
 		user32.PostMessageW(self.overlay_hwnd, WM_APP_SETTINGS, 0, 0)
 		self._schedule_save()
 
+	def _make_section(self, title):
+		import tkinter as tk
+		frame = tk.LabelFrame(self._flow_frame, text=title, padx=10, pady=8,
+			bg=self.BG_SECTION, fg=self.FG)
+		return frame
+
+	def _make_button(self, parent, text, command, width=None, relief="raised", anchor=None):
+		import tkinter as tk
+		kw = dict(text=text, command=command, bg=self.BG_BTN, fg=self.FG,
+			activebackground=self.BG_BTN_ACTIVE, activeforeground=self.FG,
+			relief=relief, bd=1, highlightthickness=0)
+		if width is not None:
+			kw["width"] = width
+		if anchor is not None:
+			kw["anchor"] = anchor
+		return tk.Button(parent, **kw)
+
 	def _add_color_row(self, parent, key, label, value):
 		import tkinter as tk
 
-		row = tk.Frame(parent)
+		row = tk.Frame(parent, bg=self.BG_SECTION)
 		row.pack(fill="x", pady=2)
-		tk.Label(row, text=label, width=14, anchor="w").pack(side="left")
+		tk.Label(row, text=label, width=14, anchor="w",
+			bg=self.BG_SECTION, fg=self.FG).pack(side="left")
 		r, g, b = value
 		hex_color = "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
 		btn = tk.Button(row, bg=hex_color, width=6, relief="solid",
+			activebackground=hex_color, highlightthickness=0, bd=1,
 			command=lambda k=key, bt=None: self._pick_color(k))
 		btn.pack(side="left", padx=5)
 		self._widgets[key] = ("color", btn, value[:])
@@ -1110,14 +1162,19 @@ class SettingsWindow:
 	def _add_spin_row(self, parent, key, label, lo, hi, step, value):
 		import tkinter as tk
 
-		row = tk.Frame(parent)
+		row = tk.Frame(parent, bg=self.BG_SECTION)
 		row.pack(fill="x", pady=2)
-		tk.Label(row, text=label, width=14, anchor="w").pack(side="left")
+		tk.Label(row, text=label, width=14, anchor="w",
+			bg=self.BG_SECTION, fg=self.FG).pack(side="left")
 		var = tk.DoubleVar(value=value)
 		digits = 2 if step < 0.1 else (1 if step < 1 else 0)
 		fmt = f"%.{digits}f"
 		spin = tk.Spinbox(row, from_=lo, to=hi, increment=step,
 			textvariable=var, width=10, format=fmt,
+			bg=self.BG_INPUT, fg=self.FG, insertbackground=self.FG,
+			buttonbackground=self.BG_BTN, relief="flat",
+			highlightthickness=1, highlightcolor=self.BORDER,
+			highlightbackground=self.BORDER,
 			command=lambda: self._on_change())
 		spin.bind("<Return>", lambda e: self._on_change())
 		spin.bind("<FocusOut>", lambda e: self._on_change())
@@ -1127,10 +1184,13 @@ class SettingsWindow:
 	def _add_check_row(self, parent, key, label, value):
 		import tkinter as tk
 
-		row = tk.Frame(parent)
+		row = tk.Frame(parent, bg=self.BG_SECTION)
 		row.pack(fill="x", pady=2)
 		var = tk.BooleanVar(value=value)
 		chk = tk.Checkbutton(row, text=label, variable=var,
+			bg=self.BG_SECTION, fg=self.FG,
+			activebackground=self.BG_SECTION, activeforeground=self.FG,
+			selectcolor=self.BG_INPUT, highlightthickness=0,
 			command=self._on_change)
 		chk.pack(side="left")
 		self._widgets[key] = ("check", var)
@@ -1145,7 +1205,7 @@ class SettingsWindow:
 			rgb = result[0]
 			new_val = [rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0]
 			hex_color = result[1]
-			btn.configure(bg=hex_color)
+			btn.configure(bg=hex_color, activebackground=hex_color)
 			self._widgets[key] = ("color", btn, new_val)
 			self._on_change()
 

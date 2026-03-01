@@ -1307,9 +1307,12 @@ class TrayIcon:
 
 		favs = self.settings_win.favorites
 		if favs:
+			def _make_fav_action(n):
+				def action(icon, item):
+					self.settings_win.load_favorite(n)
+				return action
 			fav_items = [
-				pystray.MenuItem(name,
-					lambda icon, item, n=name: self.settings_win.load_favorite(n))
+				pystray.MenuItem(name, _make_fav_action(name))
 				for name in sorted(favs)
 			]
 		else:

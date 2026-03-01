@@ -43,6 +43,8 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
   - Hold **Ctrl** while dragging to snap the angle to 15° increments (0°, 15°, 30°, 45°, etc.)
   - Press **Escape** to return to crosshair mode
 - **Favorites** — save named presets of your crosshair settings and switch between them instantly from the settings window or the tray menu
+- **Start at login** — optional autostart on both platforms
+- **Uninstall** — remove config files and autostart entries from within the settings window
 - All values editable via spin buttons (type exact values or use arrows)
 - Live-preview settings window with responsive layout
 - System tray icon with toggle, mode switching, settings, favorites, and quit
@@ -59,47 +61,49 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 | **Config path** | `~/.config/crosshair-overlay/config.json` | `%APPDATA%\crosshair-overlay\config.json` |
 | **Favorites** | `~/.config/crosshair-overlay/favorites.json` | `%APPDATA%\crosshair-overlay\favorites.json` |
 
-## Linux
+## Installation
 
-### Requirements
+### Linux (.deb)
 
-- Python 3
-- GTK 3 (`gir1.2-gtk-3.0`)
-- AppIndicator3 (`gir1.2-appindicator3-0.1`)
-- X11 display server
+Download `crosshair-overlay_1.0.0_all.deb` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and install:
 
-On Linux Mint / Ubuntu / Debian:
+```bash
+sudo dpkg -i crosshair-overlay_1.0.0_all.deb
+```
+
+Then launch from your application menu or run `crosshair-overlay` from a terminal.
+
+To uninstall:
+
+```bash
+sudo dpkg -r crosshair-overlay
+```
+
+### Windows (.exe)
+
+Download `CrosshairOverlay-1.0.0.exe` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and run it — no installation required.
+
+An installer (`CrosshairOverlay-1.0.0-Setup.exe`) is also available if you prefer a Start Menu shortcut and optional start-at-login.
+
+### From source
+
+#### Linux
+
+Requirements: Python 3, GTK 3 (`gir1.2-gtk-3.0`), AppIndicator3 (`gir1.2-appindicator3-0.1`), X11.
 
 ```bash
 sudo apt install python3 gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
+python3 linux/crosshair_overlay.py
 ```
 
 Most of these are pre-installed on Linux Mint.
 
-### Usage
+#### Windows
 
-```bash
-python3 linux/crosshair_overlay.py
-```
-
-## Windows
-
-### Requirements
-
-- Python 3 — download from [python.org](https://www.python.org/downloads/) and run the installer
-  - **Important:** check **"Add python.exe to PATH"** during installation
-- pystray
-- Pillow
-
-After installing Python, open a Command Prompt or PowerShell and install the dependencies:
+Requirements: Python 3 ([python.org](https://www.python.org/downloads/) — check "Add python.exe to PATH"), pystray, Pillow.
 
 ```bash
 pip install pystray pillow
-```
-
-### Usage
-
-```bash
 python windows\crosshair_overlay.py
 ```
 

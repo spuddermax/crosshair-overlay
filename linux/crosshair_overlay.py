@@ -16,6 +16,7 @@ import sys
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "crosshair-overlay")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+FAVORITES_FILE = os.path.join(CONFIG_DIR, "favorites.json")
 ICON_FILE = os.path.join(CONFIG_DIR, "crosshair-icon.svg")
 
 DEFAULTS = {
@@ -64,6 +65,24 @@ def save_config(cfg):
 			json.dump(cfg, f, indent=2)
 	except OSError as e:
 		print(f"crosshair-overlay: failed to save config: {e}", file=sys.stderr)
+
+
+def load_favorites():
+	os.makedirs(CONFIG_DIR, exist_ok=True)
+	try:
+		with open(FAVORITES_FILE, "r") as f:
+			return json.load(f)
+	except (FileNotFoundError, json.JSONDecodeError):
+		return {}
+
+
+def save_favorites(favs):
+	try:
+		os.makedirs(CONFIG_DIR, exist_ok=True)
+		with open(FAVORITES_FILE, "w") as f:
+			json.dump(favs, f, indent=2)
+	except OSError as e:
+		print(f"crosshair-overlay: failed to save favorites: {e}", file=sys.stderr)
 
 
 def ensure_tray_icon():
@@ -464,13 +483,16 @@ class CrosshairOverlay(Gtk.Window):
 class SettingsWindow(Gtk.Window):
 	SECTION_MIN_WIDTH = 300
 
-	def __init__(self, overlay, cfg):
+	def __init__(self, overlay, cfg, favorites):
 		super().__init__(title="Crosshair Settings")
 		self.overlay = overlay
 		self.cfg = cfg
+		self.favorites = favorites
+		self.favorites_changed_cb = None
 		self._save_timer = None
+		self._loading = False
 
-		self.set_default_size(700, 680)
+		self.set_default_size(1100, 580)
 		self.set_position(Gtk.WindowPosition.CENTER)
 		self.connect("delete-event", self.on_delete)
 
@@ -580,6 +602,125 @@ class SettingsWindow(Gtk.Window):
 		self._set_tick_controls_sensitive(cfg["tick_enabled"])
 		self._set_label_controls_sensitive(cfg["tick_enabled"] and cfg["tick_labels"])
 
+		# ── Favorites ──
+		fav_frame = Gtk.Frame(label="Favorites")
+		fav_frame.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
+		fav_frame.set_size_request(self.SECTION_MIN_WIDTH, -1)
+		fav_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+		fav_box.set_margin_top(8)
+		fav_box.set_margin_bottom(8)
+		fav_box.set_margin_start(10)
+		fav_box.set_margin_end(10)
+		fav_frame.add(fav_box)
+		flowbox.add(fav_frame)
+
+		save_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+		self.fav_name_entry = Gtk.Entry()
+		self.fav_name_entry.set_placeholder_text("Favorite name")
+		self.fav_name_entry.set_hexpand(True)
+		self.fav_name_entry.connect("activate", lambda _: self._save_favorite_from_entry())
+		save_row.pack_start(self.fav_name_entry, True, True, 0)
+		save_btn = Gtk.Button(label="Save")
+		save_btn.connect("clicked", lambda _: self._save_favorite_from_entry())
+		save_row.pack_start(save_btn, False, False, 0)
+		fav_box.pack_start(save_row, False, False, 0)
+
+		self.fav_listbox = Gtk.ListBox()
+		self.fav_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+		fav_box.pack_start(self.fav_listbox, True, True, 0)
+		self._rebuild_favorites_list()
+
+	def _rebuild_favorites_list(self):
+		for child in self.fav_listbox.get_children():
+			self.fav_listbox.remove(child)
+		for name in sorted(self.favorites):
+			row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+			label = Gtk.Label(label=name, xalign=0)
+			label.set_hexpand(True)
+			load_btn = Gtk.Button(label=name)
+			load_btn.set_relief(Gtk.ReliefStyle.NONE)
+			load_btn.set_hexpand(True)
+			load_btn.get_child().set_xalign(0)
+			load_btn.connect("clicked", lambda _b, n=name: self._load_favorite(n))
+			row.pack_start(load_btn, True, True, 0)
+			update_btn = Gtk.Button(label="\u21bb")
+			update_btn.set_tooltip_text("Update to current settings")
+			update_btn.connect("clicked", lambda _b, n=name: self._save_favorite(n))
+			row.pack_start(update_btn, False, False, 0)
+			del_btn = Gtk.Button(label="\u00d7")
+			del_btn.set_tooltip_text("Delete")
+			del_btn.connect("clicked", lambda _b, n=name: self._delete_favorite(n))
+			row.pack_start(del_btn, False, False, 0)
+			self.fav_listbox.add(row)
+		self.fav_listbox.show_all()
+
+	def _save_favorite_from_entry(self):
+		name = self.fav_name_entry.get_text().strip()
+		if not name:
+			return
+		self._save_favorite(name)
+		self.fav_name_entry.set_text("")
+
+	def _save_favorite(self, name):
+		self.favorites[name] = dict(self.cfg)
+		save_favorites(self.favorites)
+		self._rebuild_favorites_list()
+		if self.favorites_changed_cb:
+			self.favorites_changed_cb()
+
+	def _delete_favorite(self, name):
+		self.favorites.pop(name, None)
+		save_favorites(self.favorites)
+		self._rebuild_favorites_list()
+		if self.favorites_changed_cb:
+			self.favorites_changed_cb()
+
+	def _load_favorite(self, name):
+		if name not in self.favorites:
+			return
+		self.load_favorite(name)
+
+	def load_favorite(self, name):
+		if name not in self.favorites:
+			return
+		saved = self.favorites[name]
+		self.cfg.update(saved)
+		self._update_widgets_from_cfg()
+		self.overlay.apply_settings(self.cfg)
+		self._schedule_save()
+
+	def _update_widgets_from_cfg(self):
+		self._loading = True
+		cfg = self.cfg
+		self.line_color_btn.set_rgba(Gdk.RGBA(*cfg["line_color"], 1.0))
+		self.line_width_spin.set_value(cfg["line_width"])
+		self.line_opacity_spin.set_value(cfg["line_opacity"])
+		self.fullscreen_check.set_active(cfg["crosshair_fullscreen"])
+		self.crosshair_radius_spin.set_value(cfg["crosshair_radius"])
+		self.crosshair_radius_spin.set_sensitive(not cfg["crosshair_fullscreen"])
+		self.dot_check.set_active(cfg["dot_enabled"])
+		self.dot_radius_spin.set_value(cfg["dot_radius"])
+		self.dot_fill_color_btn.set_rgba(Gdk.RGBA(*cfg["dot_fill_color"], 1.0))
+		self.dot_fill_opacity_spin.set_value(cfg["dot_fill_opacity"])
+		self.dot_stroke_color_btn.set_rgba(Gdk.RGBA(*cfg["dot_stroke_color"], 1.0))
+		self.dot_stroke_opacity_spin.set_value(cfg["dot_stroke_opacity"])
+		self.dot_stroke_width_spin.set_value(cfg["dot_stroke_width"])
+		self._set_dot_controls_sensitive(cfg["dot_enabled"])
+		self.tick_check.set_active(cfg["tick_enabled"])
+		self.tick_color_btn.set_rgba(Gdk.RGBA(*cfg["tick_color"], 1.0))
+		self.tick_opacity_spin.set_value(cfg["tick_opacity"])
+		self.tick_spacing_spin.set_value(cfg["tick_spacing"])
+		self.tick_major_every_spin.set_value(cfg["tick_major_every"])
+		self.tick_minor_length_spin.set_value(cfg["tick_minor_length"])
+		self.tick_major_length_spin.set_value(cfg["tick_major_length"])
+		self.tick_labels_check.set_active(cfg["tick_labels"])
+		self.tick_label_color_btn.set_rgba(Gdk.RGBA(*cfg["tick_label_color"], 1.0))
+		self.tick_label_opacity_spin.set_value(cfg["tick_label_opacity"])
+		self.tick_label_size_spin.set_value(cfg["tick_label_size"])
+		self._set_tick_controls_sensitive(cfg["tick_enabled"])
+		self._set_label_controls_sensitive(cfg["tick_enabled"] and cfg["tick_labels"])
+		self._loading = False
+
 	def _make_section(self, title):
 		frame = Gtk.Frame(label=title)
 		frame.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
@@ -650,6 +791,8 @@ class SettingsWindow(Gtk.Window):
 		self.on_change()
 
 	def on_change(self, *_args):
+		if self._loading:
+			return
 		lc = self.line_color_btn.get_rgba()
 		dfc = self.dot_fill_color_btn.get_rgba()
 		dsc = self.dot_stroke_color_btn.get_rgba()
@@ -745,6 +888,12 @@ class TrayIcon:
 		item_settings.connect("activate", self.on_settings)
 		menu.append(item_settings)
 
+		self.fav_menu_item = Gtk.MenuItem(label="Favorites")
+		self.fav_submenu = Gtk.Menu()
+		self.fav_menu_item.set_submenu(self.fav_submenu)
+		menu.append(self.fav_menu_item)
+		self._rebuild_favorites_menu()
+
 		menu.append(Gtk.SeparatorMenuItem())
 
 		item_quit = Gtk.MenuItem(label="Quit")
@@ -754,6 +903,21 @@ class TrayIcon:
 		menu.show_all()
 		self.indicator.set_menu(menu)
 		self.overlay.mode_changed_cb = self._sync_mode_radio
+
+	def _rebuild_favorites_menu(self):
+		for child in self.fav_submenu.get_children():
+			self.fav_submenu.remove(child)
+		favs = self.settings_win.favorites
+		if favs:
+			for name in sorted(favs):
+				item = Gtk.MenuItem(label=name)
+				item.connect("activate", lambda _i, n=name: self.settings_win.load_favorite(n))
+				self.fav_submenu.append(item)
+		else:
+			item = Gtk.MenuItem(label="(empty)")
+			item.set_sensitive(False)
+			self.fav_submenu.append(item)
+		self.fav_submenu.show_all()
 
 	def _sync_mode_radio(self, mode):
 		if mode == "crosshair" and not self.radio_crosshair.get_active():
@@ -784,14 +948,16 @@ class TrayIcon:
 if __name__ == "__main__":
 	cfg = load_config()
 	save_config(cfg)
+	favs = load_favorites()
 
 	overlay = CrosshairOverlay(cfg)
 	overlay.show_all()
 	overlay.enable_click_through()
 	GLib.timeout_add(1, overlay.poll_pointer)
 
-	settings_win = SettingsWindow(overlay, cfg)
+	settings_win = SettingsWindow(overlay, cfg, favs)
 	tray = TrayIcon(overlay, settings_win)
+	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
 
 	try:
 		Gtk.main()

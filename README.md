@@ -42,9 +42,10 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
   - Ruler ticks along the measurement line, reusing the crosshair's tick settings
   - Hold **Ctrl** while dragging to snap the angle to 15° increments (0°, 15°, 30°, 45°, etc.)
   - Press **Escape** to return to crosshair mode
+- **Favorites** (Linux) — save named presets of your crosshair settings and switch between them instantly from the settings window or the tray menu
 - All values editable via spin buttons (type exact values or use arrows)
 - Live-preview settings window with responsive layout
-- System tray icon with toggle, mode switching, settings, and quit
+- System tray icon with toggle, mode switching, settings, favorites, and quit
 - Settings persist across restarts
 - Multi-monitor support
 
@@ -56,6 +57,7 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 | **Settings** | GTK 3 | tkinter |
 | **Tray icon** | AppIndicator3 | pystray + Pillow |
 | **Config path** | `~/.config/crosshair-overlay/config.json` | `%APPDATA%\crosshair-overlay\config.json` |
+| **Favorites** | `~/.config/crosshair-overlay/favorites.json` | — |
 
 ## Linux
 
@@ -108,6 +110,7 @@ A crosshair will appear on screen following your cursor, and a tray icon will ap
 - **Toggle Crosshair** — show or hide the overlay
 - **Mode: Crosshair / Measure** — switch between the cursor-following overlay and click-and-drag distance measurement
 - **Settings** — open the settings window to adjust appearance
+- **Favorites** (Linux) — quickly load a saved preset from the tray menu
 - **Quit** — exit the application
 
 ### Measure mode

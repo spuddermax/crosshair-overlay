@@ -54,7 +54,7 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 | | Linux | Windows |
 |---|---|---|
 | **Overlay** | GTK 3 + Cairo | Win32 API + GDI+ (ctypes) |
-| **Settings** | GTK 3 | tkinter |
+| **Settings** | GTK 3 | tkinter (dark theme) |
 | **Tray icon** | AppIndicator3 | pystray + Pillow |
 | **Config path** | `~/.config/crosshair-overlay/config.json` | `%APPDATA%\crosshair-overlay\config.json` |
 | **Favorites** | `~/.config/crosshair-overlay/favorites.json` | `%APPDATA%\crosshair-overlay\favorites.json` |

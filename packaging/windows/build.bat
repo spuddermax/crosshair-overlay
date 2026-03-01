@@ -14,7 +14,7 @@ if not exist "crosshair-overlay.ico" (
 )
 
 echo Running PyInstaller...
-pyinstaller --clean --noconfirm crosshair_overlay.spec
+python -m PyInstaller --clean --noconfirm crosshair_overlay.spec
 if errorlevel 1 (
     echo ERROR: PyInstaller failed.
     exit /b 1

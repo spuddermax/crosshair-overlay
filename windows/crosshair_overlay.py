@@ -20,6 +20,7 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 FAVORITES_FILE = os.path.join(CONFIG_DIR, "favorites.json")
 
 DEFAULTS = {
+	"auto_start": False,
 	"line_color": [0.9, 0.9, 0.9],
 	"line_width": 1.0,
 	"line_opacity": 0.35,
@@ -83,6 +84,52 @@ def save_favorites(favs):
 			json.dump(favs, f, indent=2)
 	except OSError as e:
 		print(f"crosshair-overlay: failed to save favorites: {e}", file=sys.stderr)
+
+
+# ── Autostart (Registry) ────────────────────────────────────────────────────
+
+import winreg
+
+REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+REGISTRY_VALUE_NAME = "CrosshairOverlay"
+
+
+def _get_exe_path():
+	"""Return the command to launch the app for the registry Run key."""
+	if getattr(sys, "frozen", False):
+		# Running as PyInstaller bundle
+		return sys.executable
+	return f'"{sys.executable}" "{os.path.realpath(sys.argv[0])}"'
+
+
+def _set_autostart(enabled):
+	"""Add or remove the startup registry entry under HKCU."""
+	try:
+		key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY, 0,
+			winreg.KEY_SET_VALUE)
+		if enabled:
+			winreg.SetValueEx(key, REGISTRY_VALUE_NAME, 0, winreg.REG_SZ,
+				_get_exe_path())
+		else:
+			try:
+				winreg.DeleteValue(key, REGISTRY_VALUE_NAME)
+			except FileNotFoundError:
+				pass
+		winreg.CloseKey(key)
+	except OSError as e:
+		print(f"crosshair-overlay: registry error: {e}", file=sys.stderr)
+
+
+def _get_autostart():
+	"""Check if the startup registry entry exists."""
+	try:
+		key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY, 0,
+			winreg.KEY_READ)
+		winreg.QueryValueEx(key, REGISTRY_VALUE_NAME)
+		winreg.CloseKey(key)
+		return True
+	except (FileNotFoundError, OSError):
+		return False
 
 
 # ── Win32 Constants ─────────────────────────────────────────────────────────
@@ -905,6 +952,7 @@ class SettingsWindow:
 				entry[1].set(self.cfg[key])
 			elif entry[0] == "check":
 				entry[1].set(self.cfg[key])
+		self._auto_start_var.set(_get_autostart())
 		self._root.deiconify()
 		self._root.lift()
 
@@ -959,6 +1007,19 @@ class SettingsWindow:
 
 		SECTION_MIN_WIDTH = 300
 		PAD = 10
+
+		# ── General ──
+		frame = self._make_section("General")
+		self._sections.append(frame)
+
+		self._auto_start_var = tk.BooleanVar(value=_get_autostart())
+		chk = tk.Checkbutton(frame, text="Start at login",
+			variable=self._auto_start_var,
+			bg=self.BG_SECTION, fg=self.FG,
+			activebackground=self.BG_SECTION, activeforeground=self.FG,
+			selectcolor=self.BG_INPUT, highlightthickness=0,
+			command=self._on_auto_start_toggled)
+		chk.pack(anchor="w", pady=2)
 
 		# ── Crosshair Line ──
 		frame = self._make_section("Crosshair Line")
@@ -1212,6 +1273,12 @@ class SettingsWindow:
 			btn.configure(bg=hex_color, activebackground=hex_color)
 			self._widgets[key] = ("color", btn, new_val)
 			self._on_change()
+
+	def _on_auto_start_toggled(self):
+		enabled = self._auto_start_var.get()
+		_set_autostart(enabled)
+		self.cfg["auto_start"] = enabled
+		self._schedule_save()
 
 	def _on_change(self):
 		if self._loading:

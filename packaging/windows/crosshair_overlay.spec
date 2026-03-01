@@ -5,9 +5,6 @@ block_cipher = None
 # SPECPATH is the directory containing this spec file
 repo_root = os.path.abspath(os.path.join(SPECPATH, '..', '..'))
 script_path = os.path.join(repo_root, 'windows', 'crosshair_overlay.py')
-print(f"SPECPATH: {SPECPATH}")
-print(f"repo_root: {repo_root}")
-print(f"script_path: {script_path}")
 
 a = Analysis(
     [script_path],

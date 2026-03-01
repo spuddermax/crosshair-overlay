@@ -17,6 +17,7 @@ CONFIG_DIR = os.path.join(
 	"crosshair-overlay",
 )
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+FAVORITES_FILE = os.path.join(CONFIG_DIR, "favorites.json")
 
 DEFAULTS = {
 	"line_color": [0.9, 0.9, 0.9],
@@ -64,6 +65,24 @@ def save_config(cfg):
 			json.dump(cfg, f, indent=2)
 	except OSError as e:
 		print(f"crosshair-overlay: failed to save config: {e}", file=sys.stderr)
+
+
+def load_favorites():
+	os.makedirs(CONFIG_DIR, exist_ok=True)
+	try:
+		with open(FAVORITES_FILE, "r") as f:
+			return json.load(f)
+	except (FileNotFoundError, json.JSONDecodeError):
+		return {}
+
+
+def save_favorites(favs):
+	try:
+		os.makedirs(CONFIG_DIR, exist_ok=True)
+		with open(FAVORITES_FILE, "w") as f:
+			json.dump(favs, f, indent=2)
+	except OSError as e:
+		print(f"crosshair-overlay: failed to save favorites: {e}", file=sys.stderr)
 
 
 # ── Win32 Constants ─────────────────────────────────────────────────────────
@@ -853,11 +872,14 @@ class CrosshairOverlay:
 # ── Settings Window (tkinter) ──────────────────────────────────────────────
 
 class SettingsWindow:
-	def __init__(self, overlay_hwnd, cfg):
+	def __init__(self, overlay_hwnd, cfg, favorites):
 		self.overlay_hwnd = overlay_hwnd
 		self.cfg = dict(cfg)
+		self.favorites = favorites
+		self.favorites_changed_cb = None
 		self._root = None
 		self._save_timer = None
+		self._loading = False
 		self._ready = threading.Event()
 
 		# Start the tkinter thread once and keep it alive
@@ -890,7 +912,7 @@ class SettingsWindow:
 
 		self._root = root = tk.Tk()
 		root.title("Crosshair Settings")
-		root.geometry("700x680")
+		root.geometry("1100x580")
 		root.resizable(True, True)
 
 		canvas = tk.Canvas(root)
@@ -951,10 +973,93 @@ class SettingsWindow:
 		self._add_spin_row(frame, "tick_label_opacity", "Opacity", 0.0, 1.0, 0.05, cfg["tick_label_opacity"])
 		self._add_spin_row(frame, "tick_label_size", "Size", 6.0, 24.0, 1.0, cfg["tick_label_size"])
 
+		# ── Favorites ──
+		fav_frame = tk.LabelFrame(scroll_frame, text="Favorites", padx=10, pady=8)
+		fav_frame.pack(fill="x", padx=10, pady=5)
+
+		save_row = tk.Frame(fav_frame)
+		save_row.pack(fill="x", pady=2)
+		self._fav_name_var = tk.StringVar()
+		fav_entry = tk.Entry(save_row, textvariable=self._fav_name_var)
+		fav_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+		fav_entry.bind("<Return>", lambda e: self._save_favorite_from_entry())
+		tk.Button(save_row, text="Save", command=self._save_favorite_from_entry).pack(side="left")
+
+		self._fav_list_frame = tk.Frame(fav_frame)
+		self._fav_list_frame.pack(fill="x", pady=(4, 0))
+		self._rebuild_favorites_list()
+
 		root.protocol("WM_DELETE_WINDOW", self._on_close)
 		root.withdraw()  # Start hidden
 		self._ready.set()
 		root.mainloop()
+
+	def _rebuild_favorites_list(self):
+		for child in self._fav_list_frame.winfo_children():
+			child.destroy()
+		for name in sorted(self.favorites):
+			row = self._fav_list_frame.__class__(self._fav_list_frame)
+			row.pack(fill="x", pady=1)
+			import tkinter as tk
+			tk.Button(row, text=name, anchor="w", relief="flat",
+				command=lambda n=name: self._load_favorite(n)).pack(side="left", fill="x", expand=True)
+			tk.Button(row, text="\u21bb", width=3,
+				command=lambda n=name: self._save_favorite(n)).pack(side="left", padx=(2, 0))
+			tk.Button(row, text="\u00d7", width=3,
+				command=lambda n=name: self._delete_favorite(n)).pack(side="left", padx=(2, 0))
+
+	def _save_favorite_from_entry(self):
+		name = self._fav_name_var.get().strip()
+		if not name:
+			return
+		self._save_favorite(name)
+		self._fav_name_var.set("")
+
+	def _save_favorite(self, name):
+		self.favorites[name] = dict(self.cfg)
+		save_favorites(self.favorites)
+		self._rebuild_favorites_list()
+		if self.favorites_changed_cb:
+			self.favorites_changed_cb()
+
+	def _delete_favorite(self, name):
+		self.favorites.pop(name, None)
+		save_favorites(self.favorites)
+		self._rebuild_favorites_list()
+		if self.favorites_changed_cb:
+			self.favorites_changed_cb()
+
+	def _load_favorite(self, name):
+		if name not in self.favorites:
+			return
+		self.load_favorite(name)
+
+	def load_favorite(self, name):
+		if name not in self.favorites:
+			return
+		saved = self.favorites[name]
+		self.cfg.update(saved)
+		# Update widgets if settings window is built
+		if self._root:
+			self._root.after(0, self._update_widgets_from_cfg)
+
+	def _update_widgets_from_cfg(self):
+		self._loading = True
+		for key, entry in self._widgets.items():
+			if entry[0] == "color":
+				_, btn, _ = entry
+				r, g, b = self.cfg[key]
+				hex_color = "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
+				btn.configure(bg=hex_color)
+				self._widgets[key] = ("color", btn, [r, g, b])
+			elif entry[0] == "spin":
+				entry[1].set(self.cfg[key])
+			elif entry[0] == "check":
+				entry[1].set(self.cfg[key])
+		self._loading = False
+		# Apply to overlay
+		user32.PostMessageW(self.overlay_hwnd, WM_APP_SETTINGS, 0, 0)
+		self._schedule_save()
 
 	def _add_color_row(self, parent, key, label, value):
 		import tkinter as tk
@@ -1012,6 +1117,8 @@ class SettingsWindow:
 			self._on_change()
 
 	def _on_change(self):
+		if self._loading:
+			return
 		for key, entry in self._widgets.items():
 			if entry[0] == "color":
 				self.cfg[key] = entry[2][:]
@@ -1054,6 +1161,7 @@ class TrayIcon:
 		self.settings_win = settings_win
 		self._current_mode = "crosshair"
 		self._thread = None
+		self._icon = None
 
 	def start(self):
 		self._thread = threading.Thread(target=self._run, daemon=True)
@@ -1077,7 +1185,7 @@ class TrayIcon:
 
 		return img
 
-	def _run(self):
+	def _build_menu(self):
 		import pystray
 
 		def on_toggle(icon, item):
@@ -1104,7 +1212,17 @@ class TrayIcon:
 			icon.stop()
 			user32.PostMessageW(self.overlay.hwnd, WM_APP_QUIT, 0, 0)
 
-		menu = pystray.Menu(
+		favs = self.settings_win.favorites
+		if favs:
+			fav_items = [
+				pystray.MenuItem(name,
+					lambda icon, item, n=name: self.settings_win.load_favorite(n))
+				for name in sorted(favs)
+			]
+		else:
+			fav_items = [pystray.MenuItem("(empty)", None, enabled=False)]
+
+		return pystray.Menu(
 			pystray.MenuItem("Toggle Crosshair", on_toggle),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Crosshair",
@@ -1117,12 +1235,22 @@ class TrayIcon:
 				radio=True),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Settings", on_settings),
+			pystray.MenuItem("Favorites", pystray.Menu(*fav_items)),
+			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Quit", on_quit),
 		)
 
-		icon = pystray.Icon("crosshair-overlay", self._create_icon_image(),
-			"Crosshair Overlay", menu)
-		icon.run()
+	def _rebuild_favorites_menu(self):
+		if self._icon:
+			self._icon.menu = self._build_menu()
+			self._icon.update_menu()
+
+	def _run(self):
+		import pystray
+
+		self._icon = pystray.Icon("crosshair-overlay", self._create_icon_image(),
+			"Crosshair Overlay", self._build_menu())
+		self._icon.run()
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -1136,10 +1264,12 @@ if __name__ == "__main__":
 
 	cfg = load_config()
 	save_config(cfg)
+	favs = load_favorites()
 
 	overlay = CrosshairOverlay(cfg)
-	settings_win = SettingsWindow(overlay.hwnd, cfg)
+	settings_win = SettingsWindow(overlay.hwnd, cfg, favs)
 	tray = TrayIcon(overlay, settings_win)
+	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
 	tray.start()
 
 	try:

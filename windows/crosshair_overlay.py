@@ -7,6 +7,8 @@ import ctypes.wintypes as wt
 import json
 import math
 import os
+import shutil
+import subprocess
 import sys
 import threading
 
@@ -130,6 +132,34 @@ def _get_autostart():
 		return True
 	except (FileNotFoundError, OSError):
 		return False
+
+
+def _uninstall(overlay_hwnd):
+	"""Remove config, autostart entry, and Inno Setup package (if installed), then quit."""
+	# Remove autostart registry entry
+	_set_autostart(False)
+
+	# Remove config directory
+	if os.path.isdir(CONFIG_DIR):
+		shutil.rmtree(CONFIG_DIR, ignore_errors=True)
+
+	# If installed via Inno Setup, launch the uninstaller silently
+	try:
+		key = winreg.OpenKey(
+			winreg.HKEY_CURRENT_USER,
+			r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Crosshair Overlay_is1",
+			0, winreg.KEY_READ)
+		uninstall_str, _ = winreg.QueryValueEx(key, "UninstallString")
+		winreg.CloseKey(key)
+		# Strip surrounding quotes if present
+		uninstall_exe = uninstall_str.strip('"')
+		subprocess.Popen([uninstall_exe, "/SILENT"])
+	except (FileNotFoundError, OSError):
+		pass
+
+	# Post quit message to close the overlay
+	user32 = ctypes.windll.user32
+	user32.PostMessageW(overlay_hwnd, 0x0400 + 3, 0, 0)  # WM_APP_QUIT
 
 
 # ── Win32 Constants ─────────────────────────────────────────────────────────
@@ -1083,6 +1113,9 @@ class SettingsWindow:
 			command=self._on_auto_start_toggled)
 		chk.pack(anchor="w", pady=2)
 
+		self._make_button(frame, "Uninstall", self._on_uninstall_clicked).pack(
+			anchor="w", pady=(6, 2))
+
 		# Flow layout: reflow sections into grid on resize
 		self._section_min_width = SECTION_MIN_WIDTH
 		self._pad = PAD
@@ -1279,6 +1312,15 @@ class SettingsWindow:
 		_set_autostart(enabled)
 		self.cfg["auto_start"] = enabled
 		self._schedule_save()
+
+	def _on_uninstall_clicked(self):
+		from tkinter import messagebox
+		if messagebox.askyesno(
+				"Uninstall",
+				"This will remove Crosshair Overlay, its configuration, "
+				"and startup entry. Continue?",
+				parent=self._root):
+			_uninstall(self.overlay_hwnd)
 
 	def _on_change(self):
 		if self._loading:

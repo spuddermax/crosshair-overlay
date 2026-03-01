@@ -2,11 +2,15 @@
 import os
 
 block_cipher = None
-script_dir = os.path.dirname(os.path.abspath(SPECPATH))
-repo_root = os.path.join(script_dir, '..', '..')
+# SPECPATH is the directory containing this spec file
+repo_root = os.path.abspath(os.path.join(SPECPATH, '..', '..'))
+script_path = os.path.join(repo_root, 'windows', 'crosshair_overlay.py')
+print(f"SPECPATH: {SPECPATH}")
+print(f"repo_root: {repo_root}")
+print(f"script_path: {script_path}")
 
 a = Analysis(
-    [os.path.join(repo_root, 'windows', 'crosshair_overlay.py')],
+    [script_path],
     pathex=[],
     binaries=[],
     datas=[],
@@ -39,5 +43,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join(script_dir, 'crosshair-overlay.ico'),
+    icon=os.path.join(SPECPATH, 'crosshair-overlay.ico'),
 )

@@ -1110,6 +1110,7 @@ class TrayIcon:
 			self.radio_crosshair.set_active(True)
 		dialog = Gtk.AboutDialog()
 		dialog.set_program_name("Crosshair Overlay")
+		dialog.set_logo_icon_name("crosshair-overlay")
 		dialog.set_version(APP_VERSION)
 		dialog.set_comments(f"Running from {os.path.realpath(sys.argv[0])}")
 		dialog.set_website(RELEASE_URL)

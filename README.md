@@ -89,7 +89,7 @@ Download `CrosshairOverlay-1.1.0.exe` from the [latest release](https://github.c
 
 #### Linux
 
-Requirements: Python 3, GTK 3 (`gir1.2-gtk-3.0`), AppIndicator3 (`gir1.2-appindicator3-0.1`), X11.
+Requirements: Python 3, GTK 3 (`gir1.2-gtk-3.0`), AppIndicator3 (`gir1.2-appindicator3-0.1`), X11, and a running compositor. Without a compositor the overlay can't be transparent, so the app shows an error and exits. Some desktops, including MATE, let you turn compositing off; on MATE it's the software compositing option under Control Center > Windows.
 
 ```bash
 sudo apt install python3 gir1.2-gtk-3.0 gir1.2-appindicator3-0.1

@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
@@ -173,6 +174,37 @@ def _uninstall():
 			pass
 
 	Gtk.main_quit()
+
+
+def wait_for_compositor(timeout=5):
+	"""Return whether a compositor is running.
+
+	Without one, the overlay's transparent area shows as solid black. Waits
+	briefly because at login this app can start before the compositor does.
+	"""
+	screen = Gdk.Screen.get_default()
+	deadline = time.monotonic() + timeout
+	while not screen.is_composited() and time.monotonic() < deadline:
+		while Gtk.events_pending():
+			Gtk.main_iteration()
+		time.sleep(0.1)
+	return screen.is_composited()
+
+
+def show_compositor_error():
+	text = ("Your desktop isn't running a compositor, so the overlay would "
+		"cover the screen in black instead of being transparent.\n\n"
+		"Turn on compositing in your window manager settings, then start "
+		"Crosshair Overlay again. On MATE, this is the software compositing "
+		"option under Control Center > Windows.")
+	print(f"crosshair-overlay: {text}", file=sys.stderr)
+	dialog = Gtk.MessageDialog(
+		message_type=Gtk.MessageType.ERROR,
+		buttons=Gtk.ButtonsType.OK,
+		text="Crosshair Overlay needs a compositor")
+	dialog.format_secondary_text(text)
+	dialog.run()
+	dialog.destroy()
 
 
 # ── Crosshair Overlay ──────────────────────────────────────────────────────
@@ -1131,6 +1163,10 @@ if __name__ == "__main__":
 	if instance_lock is None:
 		print("crosshair-overlay: already running", file=sys.stderr)
 		sys.exit(0)
+
+	if not wait_for_compositor():
+		show_compositor_error()
+		sys.exit(1)
 
 	cfg = load_config()
 	save_config(cfg)

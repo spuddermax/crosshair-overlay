@@ -211,15 +211,12 @@ def show_compositor_error():
 
 class CrosshairOverlay(Gtk.Window):
 	def __init__(self, cfg):
-		super().__init__(title="Crosshair Overlay")
+		# A popup is an override-redirect window: the window manager leaves it
+		# alone. Many window managers would otherwise put an invisible frame
+		# around it, and the frame catches the clicks meant to pass through.
+		super().__init__(type=Gtk.WindowType.POPUP, title="Crosshair Overlay")
 
-		self.set_decorated(False)
 		self.set_resizable(False)
-		self.set_keep_above(True)
-		self.set_type_hint(Gdk.WindowTypeHint.DOCK)
-		self.set_skip_taskbar_hint(True)
-		self.set_skip_pager_hint(True)
-		self.set_accept_focus(False)
 
 		screen = Gdk.Screen.get_default()
 		display = Gdk.Display.get_default()
@@ -231,7 +228,7 @@ class CrosshairOverlay(Gtk.Window):
 		y1 = max(r.y + r.height for r in rects)
 		self.full_width = x1 - x0
 		self.full_height = y1 - y0
-		self.set_default_size(self.full_width, self.full_height)
+		self.set_size_request(self.full_width, self.full_height)
 		self.move(x0, y0)
 
 		self.set_app_paintable(True)
@@ -306,22 +303,23 @@ class CrosshairOverlay(Gtk.Window):
 		self.mode = mode
 		if mode == "measure":
 			self.disable_click_through()
-			self.set_accept_focus(True)
-			self.present()
 			gdk_win = self.get_window()
 			if gdk_win:
 				gdk_win.set_cursor(
 					Gdk.Cursor.new_from_name(Gdk.Display.get_default(), "crosshair"))
-				gdk_win.focus(Gdk.CURRENT_TIME)
+				# No window manager focus here, so grab the keyboard for Escape
+				Gdk.Display.get_default().get_default_seat().grab(
+					gdk_win, Gdk.SeatCapabilities.KEYBOARD, False,
+					None, None, None)
 		else:
 			self.measure_start = None
 			self.measure_end = None
 			self.measuring = False
-			self.set_accept_focus(False)
 			self.enable_click_through()
 			gdk_win = self.get_window()
 			if gdk_win:
 				gdk_win.set_cursor(None)
+				Gdk.Display.get_default().get_default_seat().ungrab()
 		self.queue_draw()
 		if self.mode_changed_cb:
 			self.mode_changed_cb(mode)
@@ -372,6 +370,13 @@ class CrosshairOverlay(Gtk.Window):
 			self.set_mode("crosshair")
 			return True
 		return False
+
+	def stay_on_top(self):
+		"""The window manager won't keep an override-redirect window above others."""
+		gdk_win = self.get_window()
+		if gdk_win:
+			gdk_win.raise_()
+		return True
 
 	def poll_pointer(self):
 		if self.mode != "crosshair":
@@ -1176,6 +1181,7 @@ if __name__ == "__main__":
 	overlay.show_all()
 	overlay.enable_click_through()
 	GLib.timeout_add(1, overlay.poll_pointer)
+	GLib.timeout_add(500, overlay.stay_on_top)
 
 	settings_win = SettingsWindow(overlay, cfg, favs)
 	tray = TrayIcon(overlay, settings_win)

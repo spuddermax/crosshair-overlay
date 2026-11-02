@@ -34,6 +34,7 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 - Complete click-through — all mouse input passes to windows below
 - Customizable crosshair line color, width, and opacity
 - Full screen or fixed-radius crosshair size
+- **Fade out** — lines, ticks, and labels fade from their set opacity to zero between a start and end distance from the center
 - Center dot with independent fill and stroke (color, opacity, width), toggleable on/off
 - **Pixel ruler** — tick marks along the crosshair lines with configurable spacing and major/minor sizes
 - **Distance labels** — pixel-distance readouts at major ticks with customizable color, opacity, and font size
@@ -139,6 +140,9 @@ Settings are stored in a JSON config file (see platform table above) and are cre
 | `line_opacity` | `0.35` | Line opacity (0.0 - 1.0) |
 | `crosshair_fullscreen` | `true` | Lines span the full screen |
 | `crosshair_radius` | `100` | Line radius from center in pixels (when not fullscreen) |
+| `fade_enabled` | `false` | Fade the crosshair lines, ticks, and labels with distance from the center |
+| `fade_start` | `100` | Distance from center in pixels where fading begins |
+| `fade_end` | `300` | Distance from center in pixels where opacity reaches zero (if not past `fade_start`, the crosshair simply cuts off at `fade_start`) |
 | `dot_enabled` | `true` | Show center dot |
 | `dot_radius` | `3` | Dot radius in pixels (1 - 2000) |
 | `dot_fill_color` | `[1.0, 0.3, 0.3]` | Dot fill RGB (0.0 - 1.0) |

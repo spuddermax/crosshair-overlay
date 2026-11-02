@@ -28,6 +28,9 @@ DEFAULTS = {
 	"line_opacity": 0.35,
 	"crosshair_fullscreen": True,
 	"crosshair_radius": 100,
+	"fade_enabled": False,
+	"fade_start": 100,
+	"fade_end": 300,
 	"dot_enabled": True,
 	"dot_radius": 3,
 	"dot_fill_color": [1.0, 0.3, 0.3],
@@ -47,6 +50,15 @@ DEFAULTS = {
 	"tick_label_opacity": 0.5,
 	"tick_label_size": 9.0,
 }
+
+
+def fade_factor(dist, start, end):
+	"""Opacity multiplier at dist pixels from the origin: 1 up to start, 0 from end."""
+	if dist <= start:
+		return 1.0
+	if dist >= end:
+		return 0.0
+	return (end - dist) / (end - start)
 
 
 def load_config():
@@ -223,6 +235,7 @@ BI_RGB = 0
 SmoothingModeAntiAlias = 4
 TextRenderingHintAntiAlias = 4
 UnitPixel = 2
+WrapModeTile = 0
 StringFormatFlagsNoWrap = 0x00001000
 StringAlignmentCenter = 1
 FontStyleRegular = 0
@@ -391,12 +404,23 @@ gdiplus.GdipSetTextRenderingHint.argtypes = [ctypes.c_void_p, ctypes.c_int]
 gdiplus.GdipCreatePen1.argtypes = [
 	ctypes.c_uint32, ctypes.c_float, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
 ]
+gdiplus.GdipCreatePen2.argtypes = [
+	ctypes.c_void_p, ctypes.c_float, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
+]
 gdiplus.GdipDeletePen.argtypes = [ctypes.c_void_p]
 gdiplus.GdipDrawLine.argtypes = [
 	ctypes.c_void_p, ctypes.c_void_p,
 	ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float,
 ]
 gdiplus.GdipCreateSolidFill.argtypes = [ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)]
+gdiplus.GdipCreateLineBrush.argtypes = [
+	ctypes.POINTER(PointF), ctypes.POINTER(PointF),
+	ctypes.c_uint32, ctypes.c_uint32, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
+]
+gdiplus.GdipSetLinePresetBlend.argtypes = [
+	ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32),
+	ctypes.POINTER(ctypes.c_float), ctypes.c_int,
+]
 gdiplus.GdipDeleteBrush.argtypes = [ctypes.c_void_p]
 gdiplus.GdipFillEllipse.argtypes = [
 	ctypes.c_void_p, ctypes.c_void_p,
@@ -451,6 +475,38 @@ def argb(r, g, b, a):
 def create_pen(color_argb, width):
 	pen = ctypes.c_void_p()
 	gdiplus.GdipCreatePen1(ctypes.c_uint32(color_argb), ctypes.c_float(width), UnitPixel, ctypes.byref(pen))
+	return pen
+
+
+def create_fade_pen(r, g, b, a, width, x1, y1, x2, y2, start, end):
+	"""Pen with a gradient across a full crosshair axis, (x1, y1) to (x2, y2).
+
+	The axis is 2 * end long, centered on the origin: opaque within start of the
+	center, transparent at both ends. The brush tiles beyond its ends, which is
+	invisible because both ends are transparent.
+	"""
+	opaque = argb(r, g, b, a)
+	clear = argb(r, g, b, 0)
+	inner = start / (2 * end)
+	if inner > 0:
+		colors = [clear, opaque, opaque, clear]
+		positions = [0.0, 0.5 - inner, 0.5 + inner, 1.0]
+	else:
+		colors = [clear, opaque, clear]
+		positions = [0.0, 0.5, 1.0]
+
+	brush = ctypes.c_void_p()
+	gdiplus.GdipCreateLineBrush(
+		ctypes.byref(PointF(x1, y1)), ctypes.byref(PointF(x2, y2)),
+		ctypes.c_uint32(opaque), ctypes.c_uint32(clear),
+		WrapModeTile, ctypes.byref(brush))
+	gdiplus.GdipSetLinePresetBlend(brush,
+		(ctypes.c_uint32 * len(colors))(*colors),
+		(ctypes.c_float * len(positions))(*positions),
+		len(colors))
+	pen = ctypes.c_void_p()
+	gdiplus.GdipCreatePen2(brush, ctypes.c_float(width), UnitPixel, ctypes.byref(pen))
+	gdiplus.GdipDeleteBrush(brush)  # the pen keeps its own copy
 	return pen
 
 
@@ -747,10 +803,48 @@ class CrosshairOverlay:
 			h_left, h_right = mx - rad, mx + rad
 			v_top, v_bottom = my - rad, my + rad
 
-		pen = create_pen(argb(r, g, b, a), lw)
-		draw_line(graphics, pen, h_left, my, h_right, my)
-		draw_line(graphics, pen, mx, v_top, mx, v_bottom)
-		gdiplus.GdipDeletePen(pen)
+		fade = cfg["fade_enabled"]
+		fade_start = cfg["fade_start"]
+		fade_end = max(cfg["fade_end"], fade_start + 1)
+
+		if fade:
+			# Nothing is visible past the fade end, so ticks can stop there too
+			h_left, h_right = max(h_left, mx - fade_end), min(h_right, mx + fade_end)
+			v_top, v_bottom = max(v_top, my - fade_end), min(v_bottom, my + fade_end)
+			pen = create_fade_pen(r, g, b, a, lw,
+				mx - fade_end, my, mx + fade_end, my, fade_start, fade_end)
+			draw_line(graphics, pen, h_left, my, h_right, my)
+			gdiplus.GdipDeletePen(pen)
+			pen = create_fade_pen(r, g, b, a, lw,
+				mx, my - fade_end, mx, my + fade_end, fade_start, fade_end)
+			draw_line(graphics, pen, mx, v_top, mx, v_bottom)
+			gdiplus.GdipDeletePen(pen)
+		else:
+			pen = create_pen(argb(r, g, b, a), lw)
+			draw_line(graphics, pen, h_left, my, h_right, my)
+			draw_line(graphics, pen, mx, v_top, mx, v_bottom)
+			gdiplus.GdipDeletePen(pen)
+
+		def fade_at(dist):
+			return fade_factor(dist, fade_start, fade_end) if fade else 1.0
+
+		def draw_tick(dist, x1, y1, x2, y2):
+			f = fade_at(dist)
+			if f >= 1.0:
+				draw_line(graphics, tick_pen, x1, y1, x2, y2)
+			else:
+				faded_pen = create_pen(argb(tr, tg, tb, ta * f), 1.0)
+				draw_line(graphics, faded_pen, x1, y1, x2, y2)
+				gdiplus.GdipDeletePen(faded_pen)
+
+		def draw_label(dist, txt, x, y):
+			f = fade_at(dist)
+			if f >= 1.0:
+				draw_string(graphics, txt, font, label_brush, x, y, fmt)
+			else:
+				faded_brush = create_brush(argb(lr, lg, lb, la * f))
+				draw_string(graphics, txt, font, faded_brush, x, y, fmt)
+				gdiplus.GdipDeleteBrush(faded_brush)
 
 		# Tick marks
 		if cfg["tick_enabled"] and cfg["tick_spacing"] >= 5:
@@ -782,12 +876,11 @@ class CrosshairOverlay:
 				length = major_l if is_major else minor_l
 				for x in (mx + dist, mx - dist):
 					if h_left <= x <= h_right:
-						draw_line(graphics, tick_pen, x, my - length, x, my + length)
+						draw_tick(dist, x, my - length, x, my + length)
 						if labels and is_major and font and label_brush:
 							txt = str(dist)
 							tw, th = measure_string(graphics, txt, font, fmt)
-							draw_string(graphics, txt, font, label_brush,
-								x - tw / 2, my + major_l + 2, fmt)
+							draw_label(dist, txt, x - tw / 2, my + major_l + 2)
 				i += 1
 				dist = i * sp
 
@@ -799,12 +892,11 @@ class CrosshairOverlay:
 				length = major_l if is_major else minor_l
 				for y in (my + dist, my - dist):
 					if v_top <= y <= v_bottom:
-						draw_line(graphics, tick_pen, mx - length, y, mx + length, y)
+						draw_tick(dist, mx - length, y, mx + length, y)
 						if labels and is_major and font and label_brush:
 							txt = str(dist)
 							tw, th = measure_string(graphics, txt, font, fmt)
-							draw_string(graphics, txt, font, label_brush,
-								mx - major_l - 2 - tw, y - th / 2, fmt)
+							draw_label(dist, txt, mx - major_l - 2 - tw, y - th / 2)
 				i += 1
 				dist = i * sp
 
@@ -1047,6 +1139,9 @@ class SettingsWindow:
 		self._add_spin_row(frame, "line_opacity", "Opacity", 0.0, 1.0, 0.05, cfg["line_opacity"])
 		self._add_check_row(frame, "crosshair_fullscreen", "Full screen", cfg["crosshair_fullscreen"])
 		self._add_spin_row(frame, "crosshair_radius", "Radius", 5, 2000, 1, cfg["crosshair_radius"])
+		self._add_check_row(frame, "fade_enabled", "Fade out", cfg["fade_enabled"])
+		self._add_spin_row(frame, "fade_start", "Fade start", 0, 20000, 1, cfg["fade_start"])
+		self._add_spin_row(frame, "fade_end", "Fade end", 1, 20000, 1, cfg["fade_end"])
 
 		# ── Center Dot ──
 		frame = self._make_section("Center Dot")

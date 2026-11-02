@@ -27,6 +27,9 @@ DEFAULTS = {
 	"line_opacity": 0.35,
 	"crosshair_fullscreen": True,
 	"crosshair_radius": 100,
+	"fade_enabled": False,
+	"fade_start": 100,
+	"fade_end": 300,
 	"dot_enabled": True,
 	"dot_radius": 3,
 	"dot_fill_color": [1.0, 0.3, 0.3],
@@ -46,6 +49,15 @@ DEFAULTS = {
 	"tick_label_opacity": 0.5,
 	"tick_label_size": 9.0,
 }
+
+
+def fade_factor(dist, start, end):
+	"""Opacity multiplier at dist pixels from the origin: 1 up to start, 0 from end."""
+	if dist <= start:
+		return 1.0
+	if dist >= end:
+		return 0.0
+	return (end - dist) / (end - start)
 
 
 def load_config():
@@ -198,6 +210,9 @@ class CrosshairOverlay(Gtk.Window):
 		self.line_width = cfg["line_width"]
 		self.crosshair_fullscreen = cfg["crosshair_fullscreen"]
 		self.crosshair_radius = cfg["crosshair_radius"]
+		self.fade_enabled = cfg["fade_enabled"]
+		self.fade_start = cfg["fade_start"]
+		self.fade_end = max(cfg["fade_end"], cfg["fade_start"] + 1)
 		self.dot_enabled = cfg["dot_enabled"]
 		self.center_dot_radius = cfg["dot_radius"]
 		self.dot_fill_color = rgba("dot_fill_color", "dot_fill_opacity")
@@ -326,9 +341,25 @@ class CrosshairOverlay(Gtk.Window):
 
 		return True
 
+	def _fade_gradient(self, x0, y0, x1, y1):
+		"""Line gradient across a full crosshair axis, transparent at both ends."""
+		r, g, b, a = self.line_color
+		inner = self.fade_start / (2 * self.fade_end)
+		grad = cairo.LinearGradient(x0, y0, x1, y1)
+		grad.add_color_stop_rgba(0, r, g, b, 0)
+		grad.add_color_stop_rgba(0.5 - inner, r, g, b, a)
+		grad.add_color_stop_rgba(0.5 + inner, r, g, b, a)
+		grad.add_color_stop_rgba(1, r, g, b, 0)
+		return grad
+
+	def _set_faded_source(self, cr, color, dist):
+		r, g, b, a = color
+		if self.fade_enabled:
+			a *= fade_factor(dist, self.fade_start, self.fade_end)
+		cr.set_source_rgba(r, g, b, a)
+
 	def _draw_crosshair(self, cr):
 		cr.set_line_width(self.line_width)
-		cr.set_source_rgba(*self.line_color)
 		if self.crosshair_fullscreen:
 			h_left, h_right = 0, self.full_width
 			v_top, v_bottom = 0, self.full_height
@@ -337,16 +368,29 @@ class CrosshairOverlay(Gtk.Window):
 			h_left, h_right = self.mx - r, self.mx + r
 			v_top, v_bottom = self.my - r, self.my + r
 
+		if self.fade_enabled:
+			# Nothing is visible past the fade end, so ticks can stop there too
+			end = self.fade_end
+			h_left, h_right = max(h_left, self.mx - end), min(h_right, self.mx + end)
+			v_top, v_bottom = max(v_top, self.my - end), min(v_bottom, self.my + end)
+			cr.set_source(self._fade_gradient(
+				self.mx - end, 0, self.mx + end, 0))
+		else:
+			cr.set_source_rgba(*self.line_color)
+
 		cr.move_to(h_left, self.my)
 		cr.line_to(h_right, self.my)
 		cr.stroke()
+
+		if self.fade_enabled:
+			cr.set_source(self._fade_gradient(
+				0, self.my - end, 0, self.my + end))
 
 		cr.move_to(self.mx, v_top)
 		cr.line_to(self.mx, v_bottom)
 		cr.stroke()
 
 		if self.tick_enabled and self.tick_spacing >= 5:
-			cr.set_source_rgba(*self.tick_color)
 			cr.set_line_width(1.0)
 			sp = self.tick_spacing
 			maj = self.tick_major_every
@@ -368,17 +412,17 @@ class CrosshairOverlay(Gtk.Window):
 				length = major_l if is_major else minor_l
 				for x in (self.mx + dist, self.mx - dist):
 					if h_left <= x <= h_right:
+						self._set_faded_source(cr, self.tick_color, dist)
 						cr.move_to(x, self.my - length)
 						cr.line_to(x, self.my + length)
 						cr.stroke()
 						if labels and is_major:
-							cr.set_source_rgba(*self.tick_label_color)
+							self._set_faded_source(cr, self.tick_label_color, dist)
 							txt = str(dist)
 							ext = cr.text_extents(txt)
 							cr.move_to(x - ext.width / 2,
 								self.my + major_l + label_pad + ext.height)
 							cr.show_text(txt)
-							cr.set_source_rgba(*self.tick_color)
 				i += 1
 				dist = i * sp
 
@@ -390,18 +434,18 @@ class CrosshairOverlay(Gtk.Window):
 				length = major_l if is_major else minor_l
 				for y in (self.my + dist, self.my - dist):
 					if v_top <= y <= v_bottom:
+						self._set_faded_source(cr, self.tick_color, dist)
 						cr.move_to(self.mx - length, y)
 						cr.line_to(self.mx + length, y)
 						cr.stroke()
 						if labels and is_major:
-							cr.set_source_rgba(*self.tick_label_color)
+							self._set_faded_source(cr, self.tick_label_color, dist)
 							txt = str(dist)
 							ext = cr.text_extents(txt)
 							cr.move_to(
 								self.mx - major_l - label_pad - ext.width,
 								y + ext.height / 2)
 							cr.show_text(txt)
-							cr.set_source_rgba(*self.tick_color)
 				i += 1
 				dist = i * sp
 
@@ -564,6 +608,19 @@ class SettingsWindow(Gtk.Window):
 		self.crosshair_radius_spin = self._add_spin_row(
 			grid, row, "Radius", 5, 2000, 1, cfg["crosshair_radius"])
 		self.crosshair_radius_spin.set_sensitive(not cfg["crosshair_fullscreen"])
+		row += 1
+
+		self.fade_check = Gtk.CheckButton(label="Fade out")
+		self.fade_check.set_active(cfg["fade_enabled"])
+		self.fade_check.connect("toggled", self.on_fade_toggled)
+		grid.attach(self.fade_check, 0, row, 2, 1); row += 1
+
+		self.fade_start_spin = self._add_spin_row(
+			grid, row, "Fade start", 0, 20000, 1, cfg["fade_start"]); row += 1
+		self.fade_end_spin = self._add_spin_row(
+			grid, row, "Fade end", 1, 20000, 1, cfg["fade_end"])
+
+		self._set_fade_controls_sensitive(cfg["fade_enabled"])
 
 		# ── Center Dot ──
 		frame, grid = self._make_section("Center Dot")
@@ -761,6 +818,10 @@ class SettingsWindow(Gtk.Window):
 		self.fullscreen_check.set_active(cfg["crosshair_fullscreen"])
 		self.crosshair_radius_spin.set_value(cfg["crosshair_radius"])
 		self.crosshair_radius_spin.set_sensitive(not cfg["crosshair_fullscreen"])
+		self.fade_check.set_active(cfg["fade_enabled"])
+		self.fade_start_spin.set_value(cfg["fade_start"])
+		self.fade_end_spin.set_value(cfg["fade_end"])
+		self._set_fade_controls_sensitive(cfg["fade_enabled"])
 		self.dot_check.set_active(cfg["dot_enabled"])
 		self.dot_radius_spin.set_value(cfg["dot_radius"])
 		self.dot_fill_color_btn.set_rgba(Gdk.RGBA(*cfg["dot_fill_color"], 1.0))
@@ -849,6 +910,14 @@ class SettingsWindow(Gtk.Window):
 		self._set_dot_controls_sensitive(btn.get_active())
 		self.on_change()
 
+	def _set_fade_controls_sensitive(self, enabled):
+		for w in (self.fade_start_spin, self.fade_end_spin):
+			w.set_sensitive(enabled)
+
+	def on_fade_toggled(self, btn):
+		self._set_fade_controls_sensitive(btn.get_active())
+		self.on_change()
+
 	def on_fullscreen_toggled(self, btn):
 		self.crosshair_radius_spin.set_sensitive(not btn.get_active())
 		self.on_change()
@@ -866,6 +935,9 @@ class SettingsWindow(Gtk.Window):
 			"line_opacity": round(self.line_opacity_spin.get_value(), 2),
 			"crosshair_fullscreen": self.fullscreen_check.get_active(),
 			"crosshair_radius": int(self.crosshair_radius_spin.get_value()),
+			"fade_enabled": self.fade_check.get_active(),
+			"fade_start": int(self.fade_start_spin.get_value()),
+			"fade_end": int(self.fade_end_spin.get_value()),
 			"dot_enabled": self.dot_check.get_active(),
 			"dot_radius": int(self.dot_radius_spin.get_value()),
 			"dot_fill_color": [dfc.red, dfc.green, dfc.blue],

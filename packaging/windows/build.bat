@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set VERSION=1.0.0
+set VERSION=1.1.0
 
 echo === Building Crosshair Overlay v%VERSION% ===
 

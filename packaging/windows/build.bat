@@ -1,7 +1,12 @@
 @echo off
 setlocal
 
-set VERSION=1.1.0
+set VERSION=
+for /f "tokens=3" %%v in ('findstr /b "APP_VERSION" ..\..\windows\crosshair_overlay.py') do set VERSION=%%~v
+if "%VERSION%"=="" (
+    echo ERROR: APP_VERSION not found.
+    exit /b 1
+)
 
 echo === Building Crosshair Overlay v%VERSION% ===
 

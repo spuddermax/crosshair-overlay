@@ -15,6 +15,10 @@ import time
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
+APP_VERSION = "1.1.0"  # build scripts read the release version from this line
+RELEASE_URL = ("https://github.com/spuddermax/crosshair-overlay/releases/tag/v"
+	+ APP_VERSION.removesuffix(".0"))
+
 CONFIG_DIR = os.path.join(
 	os.environ.get("APPDATA", os.path.expanduser("~")),
 	"crosshair-overlay",
@@ -253,6 +257,10 @@ StringAlignmentCenter = 1
 FontStyleRegular = 0
 FontStyleBold = 1
 
+# MessageBox
+MB_ICONINFORMATION = 0x00000040
+MB_TOPMOST = 0x00040000
+
 HWND_TOPMOST = -1
 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 
@@ -385,6 +393,7 @@ user32.UpdateLayeredWindow.argtypes = [
 	ctypes.POINTER(BLENDFUNCTION), wt.DWORD,
 ]
 user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+user32.MessageBoxW.argtypes = [wt.HWND, wt.LPCWSTR, wt.LPCWSTR, wt.UINT]
 user32.FindWindowW.argtypes = [wt.LPCWSTR, wt.LPCWSTR]
 user32.FindWindowW.restype = wt.HWND
 user32.GetKeyState.argtypes = [ctypes.c_int]
@@ -1518,6 +1527,7 @@ class TrayIcon:
 		self._current_mode = "crosshair"
 		self._thread = None
 		self._icon = None
+		self._about_open = False
 
 	def start(self):
 		self._thread = threading.Thread(target=self._run, daemon=True)
@@ -1541,6 +1551,17 @@ class TrayIcon:
 
 		return img
 
+	def _show_about(self):
+		exe = sys.executable if getattr(sys, "frozen", False) else os.path.realpath(sys.argv[0])
+		text = (f"Version {APP_VERSION}\n\n"
+			f"Running from:\n{exe}\n\n"
+			f"Release notes:\n{RELEASE_URL}")
+		try:
+			user32.MessageBoxW(None, text, "About Crosshair Overlay",
+				MB_ICONINFORMATION | MB_TOPMOST)
+		finally:
+			self._about_open = False
+
 	def _build_menu(self):
 		import pystray
 
@@ -1561,6 +1582,14 @@ class TrayIcon:
 				self._current_mode = "crosshair"
 				user32.PostMessageW(self.overlay.hwnd, WM_APP_MODE, 0, 0)
 			self.settings_win.show()
+
+		def on_about(icon, item):
+			if self._current_mode != "crosshair":
+				self._current_mode = "crosshair"
+				user32.PostMessageW(self.overlay.hwnd, WM_APP_MODE, 0, 0)
+			if not self._about_open:
+				self._about_open = True
+				threading.Thread(target=self._show_about, daemon=True).start()
 
 		def on_quit(icon, item):
 			icon.stop()
@@ -1593,6 +1622,7 @@ class TrayIcon:
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Settings", on_settings),
 			pystray.MenuItem("Favorites", pystray.Menu(*fav_items)),
+			pystray.MenuItem("About", on_about),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Quit", on_quit),
 		)

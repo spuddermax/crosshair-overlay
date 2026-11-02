@@ -120,6 +120,7 @@ The tray menu contains:
 - **Mode: Crosshair / Measure** — switch between the cursor-following overlay and click-and-drag distance measurement
 - **Settings** — open the settings window to adjust appearance
 - **Favorites** — quickly load a saved preset from the tray menu
+- **About** — show the running version, where it's running from, and a link to its release notes
 - **Quit** — exit the application
 
 ### Measure mode

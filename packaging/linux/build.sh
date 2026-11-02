@@ -1,10 +1,11 @@
 #!/bin/bash
 set -e
 
-VERSION="1.1.0"
 PKG_NAME="crosshair-overlay"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+VERSION="$(sed -n 's/^APP_VERSION = "\([^"]*\)".*/\1/p' "$REPO_ROOT/linux/crosshair_overlay.py")"
+[ -n "$VERSION" ] || { echo "ERROR: APP_VERSION not found" >&2; exit 1; }
 BUILD_DIR="$SCRIPT_DIR/build/${PKG_NAME}_${VERSION}_all"
 OUTPUT="$SCRIPT_DIR/${PKG_NAME}_${VERSION}_all.deb"
 

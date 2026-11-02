@@ -17,6 +17,10 @@ import sys
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
+APP_VERSION = "1.1.0"  # build scripts read the release version from this line
+RELEASE_URL = ("https://github.com/spuddermax/crosshair-overlay/releases/tag/v"
+	+ APP_VERSION.removesuffix(".0"))
+
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "crosshair-overlay")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 FAVORITES_FILE = os.path.join(CONFIG_DIR, "favorites.json")
@@ -1052,6 +1056,10 @@ class TrayIcon:
 		menu.append(self.fav_menu_item)
 		self._rebuild_favorites_menu()
 
+		item_about = Gtk.MenuItem(label="About")
+		item_about.connect("activate", self.on_about)
+		menu.append(item_about)
+
 		menu.append(Gtk.SeparatorMenuItem())
 
 		item_quit = Gtk.MenuItem(label="Quit")
@@ -1096,6 +1104,20 @@ class TrayIcon:
 			self.radio_crosshair.set_active(True)
 		self.settings_win.show_all()
 		self.settings_win.present()
+
+	def on_about(self, _item):
+		if self.overlay.mode != "crosshair":
+			self.radio_crosshair.set_active(True)
+		dialog = Gtk.AboutDialog()
+		dialog.set_program_name("Crosshair Overlay")
+		dialog.set_version(APP_VERSION)
+		dialog.set_comments(f"Running from {os.path.realpath(sys.argv[0])}")
+		dialog.set_website(RELEASE_URL)
+		dialog.set_website_label("Release notes")
+		dialog.set_license_type(Gtk.License.MIT_X11)
+		dialog.set_keep_above(True)
+		dialog.run()
+		dialog.destroy()
 
 	def on_quit(self, _item):
 		Gtk.main_quit()

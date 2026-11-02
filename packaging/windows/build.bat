@@ -43,7 +43,7 @@ if %errorlevel% equ 0 (
     echo Installer: Output\CrosshairOverlay-%VERSION%-Setup.exe
 ) else (
     echo.
-    echo Inno Setup compiler (iscc) not found on PATH.
+    echo Inno Setup compiler ^(iscc^) not found on PATH.
     echo To build the installer, install Inno Setup and run: iscc /DAPP_VERSION=%VERSION% installer.iss
 )
 

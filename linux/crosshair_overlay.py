@@ -7,6 +7,7 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('AppIndicator3', '0.1')
 from gi.repository import Gtk, Gdk, GLib, AppIndicator3
 import cairo
+import fcntl
 import json
 import math
 import os
@@ -20,6 +21,7 @@ CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "crosshair-overlay
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 FAVORITES_FILE = os.path.join(CONFIG_DIR, "favorites.json")
 ICON_FILE = os.path.join(CONFIG_DIR, "crosshair-icon.svg")
+LOCK_FILE = os.path.join(CONFIG_DIR, "instance.lock")
 
 DEFAULTS = {
 	"line_color": [0.9, 0.9, 0.9],
@@ -97,6 +99,28 @@ def save_favorites(favs):
 			json.dump(favs, f, indent=2)
 	except OSError as e:
 		print(f"crosshair-overlay: failed to save favorites: {e}", file=sys.stderr)
+
+
+def favorite_settings(saved):
+	"""Settings a favorite applies; defaults fill keys it predates."""
+	merged = dict(DEFAULTS)
+	merged.update(saved)
+	return merged
+
+
+def acquire_instance_lock():
+	"""Return an open lock file, or None if another copy holds it.
+
+	The caller must keep the file open; the lock lasts until the process exits.
+	"""
+	os.makedirs(CONFIG_DIR, exist_ok=True)
+	lock = open(LOCK_FILE, "w")
+	try:
+		fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+	except OSError:
+		lock.close()
+		return None
+	return lock
 
 
 def ensure_tray_icon():
@@ -803,8 +827,7 @@ class SettingsWindow(Gtk.Window):
 	def load_favorite(self, name):
 		if name not in self.favorites:
 			return
-		saved = self.favorites[name]
-		self.cfg.update(saved)
+		self.cfg.update(favorite_settings(self.favorites[name]))
 		self._update_widgets_from_cfg()
 		self.overlay.apply_settings(self.cfg)
 		self._schedule_save()
@@ -1081,6 +1104,11 @@ class TrayIcon:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+	instance_lock = acquire_instance_lock()
+	if instance_lock is None:
+		print("crosshair-overlay: already running", file=sys.stderr)
+		sys.exit(0)
+
 	cfg = load_config()
 	save_config(cfg)
 	favs = load_favorites()

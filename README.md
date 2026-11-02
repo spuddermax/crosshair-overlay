@@ -50,6 +50,7 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 - Live-preview settings window with responsive layout
 - System tray icon with toggle, mode switching, settings, favorites, and quit
 - Settings persist across restarts
+- Runs one copy at a time — on Windows a new launch replaces the running copy, on Linux it exits
 - Multi-monitor support
 
 ## Platform Support

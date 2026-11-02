@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,17 @@ def save_config(cfg):
 			json.dump(cfg, f, indent=2)
 	except OSError as e:
 		print(f"crosshair-overlay: failed to save config: {e}", file=sys.stderr)
+
+
+def favorite_settings(saved):
+	"""Settings a favorite applies; defaults fill keys it predates.
+
+	auto_start is left out because it describes the machine, not a look.
+	"""
+	merged = dict(DEFAULTS)
+	merged.update(saved)
+	merged.pop("auto_start", None)
+	return merged
 
 
 def load_favorites():
@@ -362,6 +374,8 @@ user32.UpdateLayeredWindow.argtypes = [
 	ctypes.POINTER(BLENDFUNCTION), wt.DWORD,
 ]
 user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+user32.FindWindowW.argtypes = [wt.LPCWSTR, wt.LPCWSTR]
+user32.FindWindowW.restype = wt.HWND
 user32.GetKeyState.argtypes = [ctypes.c_int]
 user32.GetKeyState.restype = ctypes.c_short
 user32.SetCapture.argtypes = [wt.HWND]
@@ -472,6 +486,21 @@ def argb(r, g, b, a):
 	return (ai << 24) | (ri << 16) | (gi << 8) | bi
 
 
+def close_running_instance():
+	"""Quit any overlay already running, so launching a new version replaces it.
+
+	Found by window class, so this also reaches versions without this check.
+	"""
+	hwnd = user32.FindWindowW("CrosshairOverlay", None)
+	if not hwnd:
+		return
+	user32.PostMessageW(hwnd, WM_APP_QUIT, 0, 0)
+	for _ in range(30):
+		time.sleep(0.1)
+		if not user32.FindWindowW("CrosshairOverlay", None):
+			return
+
+
 def create_pen(color_argb, width):
 	pen = ctypes.c_void_p()
 	gdiplus.GdipCreatePen1(ctypes.c_uint32(color_argb), ctypes.c_float(width), UnitPixel, ctypes.byref(pen))
@@ -571,6 +600,7 @@ class CrosshairOverlay:
 		self.measure_start = None
 		self.measure_end = None
 		self.measuring = False
+		self.mode_changed_cb = None
 
 		# Virtual screen bounds
 		self.vx = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
@@ -638,6 +668,8 @@ class CrosshairOverlay:
 			user32.SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0,
 				SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED)
 		self._redraw()
+		if self.mode_changed_cb:
+			self.mode_changed_cb(mode)
 
 	def _snap_endpoint(self, x1, y1, x2, y2):
 		dx = x2 - x1
@@ -851,7 +883,7 @@ class CrosshairOverlay:
 			tr, tg, tb = cfg["tick_color"]
 			ta = cfg["tick_opacity"]
 			tick_pen = create_pen(argb(tr, tg, tb, ta), 1.0)
-			sp = cfg["tick_spacing"]
+			sp = int(cfg["tick_spacing"])  # older configs saved this as a float
 			maj = cfg["tick_major_every"]
 			minor_l = cfg["tick_minor_length"]
 			major_l = cfg["tick_major_length"]
@@ -1071,7 +1103,7 @@ class SettingsWindow:
 				btn.configure(bg=hex_color, activebackground=hex_color)
 				self._widgets[key] = ("color", btn, [r, g, b])
 			elif entry[0] == "spin":
-				entry[1].set(self.cfg[key])
+				self._set_spin(entry, self.cfg[key])
 			elif entry[0] == "check":
 				entry[1].set(self.cfg[key])
 		self._auto_start_var.set(_get_autostart())
@@ -1272,7 +1304,7 @@ class SettingsWindow:
 			self._save_favorite(name)
 
 	def _save_favorite(self, name):
-		self.favorites[name] = dict(self.cfg)
+		self.favorites[name] = favorite_settings(self.cfg)
 		save_favorites(self.favorites)
 		self._rebuild_favorites_list()
 		if self.favorites_changed_cb:
@@ -1293,8 +1325,7 @@ class SettingsWindow:
 	def load_favorite(self, name):
 		if name not in self.favorites:
 			return
-		saved = self.favorites[name]
-		self.cfg.update(saved)
+		self.cfg.update(favorite_settings(self.favorites[name]))
 		# Push to overlay and save
 		self.overlay.apply_settings(self.cfg)
 		save_config(self.cfg)
@@ -1312,7 +1343,7 @@ class SettingsWindow:
 				btn.configure(bg=hex_color, activebackground=hex_color)
 				self._widgets[key] = ("color", btn, [r, g, b])
 			elif entry[0] == "spin":
-				entry[1].set(self.cfg[key])
+				self._set_spin(entry, self.cfg[key])
 			elif entry[0] == "check":
 				entry[1].set(self.cfg[key])
 		self._loading = False
@@ -1359,7 +1390,8 @@ class SettingsWindow:
 		row.pack(fill="x", pady=2)
 		tk.Label(row, text=label, width=14, anchor="w",
 			bg=self.BG_SECTION, fg=self.FG).pack(side="left")
-		var = tk.DoubleVar(value=value)
+		is_int = isinstance(step, int)
+		var = tk.IntVar(value=int(value)) if is_int else tk.DoubleVar(value=value)
 		digits = 2 if step < 0.1 else (1 if step < 1 else 0)
 		fmt = f"%.{digits}f"
 		spin = tk.Spinbox(row, from_=lo, to=hi, increment=step,
@@ -1372,7 +1404,11 @@ class SettingsWindow:
 		spin.bind("<Return>", lambda e: self._on_change())
 		spin.bind("<FocusOut>", lambda e: self._on_change())
 		spin.pack(side="left", padx=5)
-		self._widgets[key] = ("spin", var)
+		self._widgets[key] = ("spin", var, lo, hi, is_int)
+
+	def _set_spin(self, entry, value):
+		_, var, _, _, is_int = entry
+		var.set(int(value) if is_int else value)
 
 	def _add_check_row(self, parent, key, label, value):
 		import tkinter as tk
@@ -1424,10 +1460,12 @@ class SettingsWindow:
 			if entry[0] == "color":
 				self.cfg[key] = entry[2][:]
 			elif entry[0] == "spin":
+				_, var, lo, hi, _ = entry
 				try:
-					self.cfg[key] = entry[1].get()
+					self.cfg[key] = max(lo, min(hi, var.get()))
 				except Exception:
-					pass
+					pass  # not a number: keep the last good value
+				self._set_spin(entry, self.cfg[key])
 			elif entry[0] == "check":
 				self.cfg[key] = entry[1].get()
 
@@ -1542,6 +1580,11 @@ class TrayIcon:
 			pystray.MenuItem("Quit", on_quit),
 		)
 
+	def _sync_mode(self, mode):
+		self._current_mode = mode
+		if self._icon:
+			self._icon.update_menu()
+
 	def _rebuild_favorites_menu(self):
 		if self._icon:
 			self._icon.menu = self._build_menu()
@@ -1558,6 +1601,12 @@ class TrayIcon:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+	close_running_instance()
+
+	# Keep Start at login pointing at this exe after an upgrade
+	if getattr(sys, "frozen", False) and _get_autostart():
+		_set_autostart(True)
+
 	# Initialize GDI+
 	gdi_token = ctypes.POINTER(ctypes.c_uint)()
 	startup_input = GdiplusStartupInput()
@@ -1572,6 +1621,7 @@ if __name__ == "__main__":
 	settings_win = SettingsWindow(overlay, cfg, favs)
 	tray = TrayIcon(overlay, settings_win)
 	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
+	overlay.mode_changed_cb = tray._sync_mode
 	tray.start()
 
 	try:

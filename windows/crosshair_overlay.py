@@ -254,6 +254,7 @@ FontStyleRegular = 0
 FontStyleBold = 1
 
 HWND_TOPMOST = -1
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 
 # Types not defined in ctypes.wintypes
 HCURSOR = ctypes.c_void_p
@@ -344,8 +345,18 @@ kernel32 = ctypes.windll.kernel32
 gdi32 = ctypes.windll.gdi32
 gdiplus = ctypes.windll.gdiplus
 
-# DPI awareness
-user32.SetProcessDPIAware()
+# DPI awareness: per-monitor, so cursor positions and the overlay bitmap are both
+# physical pixels on monitors scaled differently from the primary. Must run before
+# any window exists. Windows older than 10 1703 falls back to system awareness.
+try:
+	user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+	user32.SetProcessDpiAwarenessContext.restype = wt.BOOL
+	dpi_aware = user32.SetProcessDpiAwarenessContext(
+		ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+except AttributeError:
+	dpi_aware = False
+if not dpi_aware:
+	user32.SetProcessDPIAware()
 
 # Window functions
 user32.CreateWindowExW.restype = wt.HWND

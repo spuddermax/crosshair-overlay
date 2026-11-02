@@ -48,3 +48,4 @@ if %errorlevel% equ 0 (
 )
 
 endlocal
+exit /b 0

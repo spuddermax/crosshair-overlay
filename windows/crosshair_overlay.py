@@ -391,6 +391,12 @@ user32.PostQuitMessage.argtypes = [ctypes.c_int]
 user32.GetSystemMetrics.argtypes = [ctypes.c_int]
 user32.GetSystemMetrics.restype = ctypes.c_int
 
+# Kernel
+kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wt.BOOL, wt.LPCWSTR]
+kernel32.CreateMutexW.restype = wt.HANDLE
+kernel32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
+kernel32.ReleaseMutex.argtypes = [wt.HANDLE]
+
 # GDI
 gdi32.CreateCompatibleDC.argtypes = [wt.HDC]
 gdi32.CreateCompatibleDC.restype = wt.HDC
@@ -486,19 +492,19 @@ def argb(r, g, b, a):
 	return (ai << 24) | (ri << 16) | (gi << 8) | bi
 
 
-def close_running_instance():
-	"""Quit any overlay already running, so launching a new version replaces it.
+def close_running_instances():
+	"""Quit every overlay already running, so launching a new version replaces it.
 
 	Found by window class, so this also reaches versions without this check.
+	Gives up after a few seconds so a hung copy can't block startup.
 	"""
-	hwnd = user32.FindWindowW("CrosshairOverlay", None)
-	if not hwnd:
-		return
-	user32.PostMessageW(hwnd, WM_APP_QUIT, 0, 0)
-	for _ in range(30):
-		time.sleep(0.1)
-		if not user32.FindWindowW("CrosshairOverlay", None):
+	deadline = time.monotonic() + 3
+	while time.monotonic() < deadline:
+		hwnd = user32.FindWindowW("CrosshairOverlay", None)
+		if not hwnd:
 			return
+		user32.PostMessageW(hwnd, WM_APP_QUIT, 0, 0)
+		time.sleep(0.1)
 
 
 def create_pen(color_argb, width):
@@ -1601,7 +1607,11 @@ class TrayIcon:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-	close_running_instance()
+	# Launches take turns, from closing old copies until this window exists,
+	# so simultaneous launches each see and replace the previous one
+	startup_lock = kernel32.CreateMutexW(None, False, "Local\\CrosshairOverlayStartup")
+	kernel32.WaitForSingleObject(startup_lock, 10000)
+	close_running_instances()
 
 	# Keep Start at login pointing at this exe after an upgrade
 	if getattr(sys, "frozen", False) and _get_autostart():
@@ -1618,6 +1628,7 @@ if __name__ == "__main__":
 	favs = load_favorites()
 
 	overlay = CrosshairOverlay(cfg)
+	kernel32.ReleaseMutex(startup_lock)
 	settings_win = SettingsWindow(overlay, cfg, favs)
 	tray = TrayIcon(overlay, settings_win)
 	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu

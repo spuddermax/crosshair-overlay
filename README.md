@@ -67,10 +67,10 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 
 ### Linux (.deb)
 
-Download `crosshair-overlay_1.0.0_all.deb` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and install:
+Download `crosshair-overlay_1.1.0_all.deb` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and install:
 
 ```bash
-sudo dpkg -i crosshair-overlay_1.0.0_all.deb
+sudo dpkg -i crosshair-overlay_1.1.0_all.deb
 ```
 
 Then launch from your application menu or run `crosshair-overlay` from a terminal.
@@ -83,7 +83,7 @@ sudo dpkg -r crosshair-overlay
 
 ### Windows (.exe)
 
-Download `CrosshairOverlay-1.0.0.exe` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and run it — no installation required.
+Download `CrosshairOverlay-1.1.0.exe` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and run it — no installation required.
 
 ### From source
 

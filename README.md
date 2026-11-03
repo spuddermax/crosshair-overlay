@@ -43,13 +43,14 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
   - Ruler ticks along the measurement line, reusing the crosshair's tick settings
   - Hold **Ctrl** while dragging to snap the angle to 15° increments (0°, 15°, 30°, 45°, etc.)
   - Press **Escape** to return to crosshair mode
-- **Favorites** — save named presets of your crosshair settings and switch between them instantly from the settings window or the tray menu
+- **Favorites** — save named presets of your crosshair settings and switch between them instantly from the settings window or the tray menu (brightness and shortcuts aren't part of a favorite, so loading one keeps them)
 - **Brightness** — one control that dims or brightens every element together, keeping their relative opacities
 - **Keyboard shortcuts** — global shortcuts to raise or lower the brightness and to show or hide the crosshair, configurable in Settings
 - **Start at login** — optional autostart on both platforms
 - **Uninstall** — remove config files and autostart entries from within the settings window
 - All values editable via spin buttons (type exact values or use arrows)
-- Live-preview settings window with responsive layout
+- Live-preview settings window with responsive layout, opening large enough to show every section when the screen allows
+- The mouse wheel scrolls the settings window and never changes a value
 - System tray icon with toggle, mode switching, settings, favorites, and quit
 - Settings persist across restarts
 - Runs one copy at a time — on Windows a new launch replaces the running copy, on Linux it exits
@@ -129,7 +130,7 @@ A crosshair will appear on screen following your cursor, and a tray icon will ap
 
 The tray menu contains:
 
-- **Toggle Crosshair** — show or hide the overlay
+- **Toggle Crosshair** — show or hide the overlay (also `Ctrl+Alt+Shift+Home` by default)
 - **Mode: Crosshair / Measure** — switch between the cursor-following overlay and click-and-drag distance measurement
 - **Settings** — open the settings window to adjust appearance
 - **Favorites** — quickly load a saved preset from the tray menu
@@ -146,9 +147,22 @@ These work in any application while the overlay is running:
 | `Ctrl+Alt+Shift+PageDown` | Dimmer (hold to keep going) |
 | `Ctrl+Alt+Shift+Home` | Show or hide the crosshair |
 
-To change one, open **Settings**, click its box under **Brightness & Shortcuts**, and press the new keys. Backspace clears it. Shortcuts need Ctrl, Alt or Super (the Windows key) so they can't clash with typing. If another program or the desktop already uses the keys, Settings says so and the shortcut stays off. Shortcuts used only inside one application can't be detected, and the overlay takes them over while it's running.
+To change one, open **Settings**, click its box under **Brightness & Shortcuts**, and press the new keys. Backspace clears it. While a box is selected, the shortcuts are paused so you can press any keys, including ones already in use; click anywhere else to turn them back on. Shortcuts need Ctrl, Alt or Super (the Windows key) so they can't clash with typing.
+
+If another program or the desktop already uses the keys, Settings says so and the shortcut stays off. Some clashes can't be detected:
+
+- Shortcuts used only inside one application. The overlay takes these over while it's running.
+- On Linux, the desktop's own shortcuts are checked only on Cinnamon, GNOME and MATE. Other desktops are checked only against programs that reserve keys the standard X11 way.
 
 The brightness multiplies every element's opacity, from 0 to 2, and **Reset brightness** puts it back to 1. Above 1, an element stops at full opacity.
+
+On Linux, other programs can also change the brightness by sending the running app a signal, which is useful for unusual input devices: `SIGUSR1` raises it one step and `SIGUSR2` lowers it.
+
+```bash
+pkill -USR1 -f '^python3 /usr/bin/crosshair-overlay'
+```
+
+Versions before 1.2.0 don't handle these signals, and quit if they receive one.
 
 ### Measure mode
 

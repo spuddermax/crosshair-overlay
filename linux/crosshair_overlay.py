@@ -1539,7 +1539,8 @@ if __name__ == "__main__":
 	tray = TrayIcon(overlay, settings_win)
 	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
 
-	# SIGUSR1 and SIGUSR2 raise and lower the brightness by one step
+	# SIGUSR1 and SIGUSR2 raise and lower the brightness by one step, so other
+	# programs can drive it; linux/extras/zoom-slider does this from a keyboard
 	GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
 		settings_win.nudge_brightness, BRIGHTNESS_STEP)
 	GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2,

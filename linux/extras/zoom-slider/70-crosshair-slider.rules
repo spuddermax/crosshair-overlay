@@ -1,0 +1,4 @@
+# Let the logged-in user read the Microsoft Digital Media Pro keyboard's
+# media-key device, which carries the zoom slider. The normal typing keys are
+# on a separate device, which this doesn't match.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*Digital Media Pro Keyboard Consumer Control", TAG+="uaccess"

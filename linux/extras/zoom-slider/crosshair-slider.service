@@ -1,0 +1,9 @@
+[Unit]
+Description=Crosshair opacity from the keyboard zoom slider
+
+[Service]
+ExecStart=%h/.local/bin/crosshair-slider
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

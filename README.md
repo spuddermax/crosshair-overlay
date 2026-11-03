@@ -156,7 +156,7 @@ If another program or the desktop already uses the keys, Settings says so and th
 
 The brightness multiplies every element's opacity, from 0 to 2, and **Reset brightness** puts it back to 1. Above 1, an element stops at full opacity.
 
-On Linux, other programs can also change the brightness by sending the running app a signal, which is useful for unusual input devices: `SIGUSR1` raises it one step and `SIGUSR2` lowers it.
+On Linux, other programs can also change the brightness by sending the running app a signal, which is useful for unusual input devices: `SIGUSR1` raises it one step and `SIGUSR2` lowers it. [`linux/extras/zoom-slider`](linux/extras/zoom-slider) uses this to turn the zoom slider on a Microsoft Digital Media Pro Keyboard into a brightness control, and explains how to adapt it to other keyboards.
 
 ```bash
 pkill -USR1 -f '^python3 /usr/bin/crosshair-overlay'

@@ -1,0 +1,57 @@
+#!/usr/bin/python3
+"""Turn the Digital Media Pro zoom slider into crosshair opacity changes.
+
+X11 can't see these keys, so read them from the keyboard's media-key device
+and signal the running overlay: SIGUSR1 for up, SIGUSR2 for down.
+"""
+import glob
+import os
+import signal
+import struct
+import time
+
+DEVICE = glob.escape("/dev/input/by-id/usb-Microsoft_Microsoft®_Digital_Media_Pro_Keyboard") + "-if01-event-kbd"
+EV_KEY = 1
+KEY_ZOOMIN = 418
+KEY_ZOOMOUT = 419
+SIGNALS = {KEY_ZOOMIN: signal.SIGUSR1, KEY_ZOOMOUT: signal.SIGUSR2}
+EVENT = struct.Struct("llHHi")
+
+
+def is_overlay(pid):
+	try:
+		with open(f"/proc/{pid}/cmdline", "rb") as f:
+			args = f.read().split(b"\0")
+	except OSError:
+		return False
+	return args[0].endswith(b"python3") and len(args) > 1 and (
+		args[1] == b"/usr/bin/crosshair-overlay"
+		or args[1].endswith(b"crosshair_overlay.py"))
+
+
+def find_overlay():
+	for pid in os.listdir("/proc"):
+		if pid.isdigit() and is_overlay(pid):
+			return int(pid)
+	return None
+
+
+def watch(path):
+	pid = None
+	with open(path, "rb", buffering=0) as dev:
+		while True:
+			data = dev.read(EVENT.size)
+			_, _, ev_type, code, value = EVENT.unpack(data)
+			if ev_type != EV_KEY or code not in SIGNALS or value == 0:
+				continue
+			if pid is None or not is_overlay(pid):
+				pid = find_overlay()
+			if pid is not None:
+				os.kill(pid, SIGNALS[code])
+
+
+while True:
+	try:
+		watch(glob.glob(DEVICE)[0])
+	except (OSError, IndexError):
+		time.sleep(2)  # keyboard unplugged, or not ready yet

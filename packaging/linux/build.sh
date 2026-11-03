@@ -29,6 +29,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Depends: python3, python3-gi, gir1.2-gtk-3.0, gir1.2-appindicator3-0.1
+Recommends: gir1.2-keybinder-3.0
 Maintainer: spuddermax
 Description: Crosshair overlay with pixel ruler and measure mode
  A lightweight full-screen crosshair overlay for Linux.

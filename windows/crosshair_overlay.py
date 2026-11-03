@@ -16,6 +16,8 @@ import time
 # ── Config ──────────────────────────────────────────────────────────────────
 
 APP_VERSION = "1.1.1"  # build scripts read the release version from this line
+BRIGHTNESS_STEP = 0.01
+MAX_BRIGHTNESS = 2.0
 RELEASE_URL = ("https://github.com/spuddermax/crosshair-overlay/releases/tag/v"
 	+ APP_VERSION.removesuffix(".0"))
 
@@ -30,6 +32,7 @@ DEFAULTS = {
 	"auto_start": False,
 	"line_color": [0.9, 0.9, 0.9],
 	"line_width": 1.0,
+	"brightness": 1.0,
 	"line_opacity": 0.35,
 	"crosshair_fullscreen": True,
 	"crosshair_radius": 100,
@@ -54,7 +57,61 @@ DEFAULTS = {
 	"tick_label_color": [0.9, 0.9, 0.9],
 	"tick_label_opacity": 0.5,
 	"tick_label_size": 9.0,
+	"shortcut_brightness_up": "Ctrl+Alt+Shift+PageUp",
+	"shortcut_brightness_down": "Ctrl+Alt+Shift+PageDown",
+	"shortcut_toggle": "Ctrl+Alt+Shift+Home",
 }
+
+# Settings that describe this machine rather than a look, so favorites skip them
+NOT_IN_FAVORITES = ("auto_start", "brightness", "shortcut_brightness_up",
+	"shortcut_brightness_down", "shortcut_toggle")
+
+# ── Shortcuts ───────────────────────────────────────────────────────────────
+
+SHORTCUT_ACTIONS = (
+	("shortcut_brightness_up", "Brighter"),
+	("shortcut_brightness_down", "Dimmer"),
+	("shortcut_toggle", "Show/hide"),
+)
+MODIFIER_ORDER = ("Ctrl", "Alt", "Shift", "Super")
+
+# Shortcut key names, shared with the Linux version, and their virtual-key codes
+SHORTCUT_KEYS = {
+	**{c: ord(c) for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"},
+	**{f"F{n}": 0x6F + n for n in range(1, 25)},
+	"PageUp": 0x21, "PageDown": 0x22, "End": 0x23, "Home": 0x24,
+	"Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28,
+	"Insert": 0x2D, "Delete": 0x2E, "Minus": 0xBD, "Equal": 0xBB,
+}
+VK_TO_KEY = {vk: name for name, vk in SHORTCUT_KEYS.items()}
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_WIN = 0x0008
+MOD_NOREPEAT = 0x4000
+HOTKEY_MODIFIERS = {"Ctrl": MOD_CONTROL, "Alt": MOD_ALT, "Shift": MOD_SHIFT, "Super": MOD_WIN}
+
+
+def parse_shortcut(text):
+	"""Split "Ctrl+Alt+PageUp" into (modifiers, key), or None if it isn't usable.
+
+	Shift alone isn't enough, since that would take over normal typing.
+	"""
+	*mods, key = [part.strip() for part in text.split("+")]
+	if (key not in SHORTCUT_KEYS or len(set(mods)) != len(mods)
+			or any(m not in MODIFIER_ORDER for m in mods)
+			or not set(mods) - {"Shift"}):
+		return None
+	return tuple(m for m in MODIFIER_ORDER if m in mods), key
+
+
+def format_shortcut(mods, key):
+	return "+".join((*mods, key))
+
+
+def opacity(cfg, key):
+	"""An element's opacity, scaled by the overall brightness."""
+	return min(1.0, cfg[key] * cfg["brightness"])
 
 
 def fade_factor(dist, start, end):
@@ -88,13 +145,11 @@ def save_config(cfg):
 
 
 def favorite_settings(saved):
-	"""Settings a favorite applies; defaults fill keys it predates.
-
-	auto_start is left out because it describes the machine, not a look.
-	"""
+	"""Settings a favorite applies; defaults fill keys it predates."""
 	merged = dict(DEFAULTS)
 	merged.update(saved)
-	merged.pop("auto_start", None)
+	for key in NOT_IN_FAVORITES:
+		merged.pop(key, None)
 	return merged
 
 
@@ -214,6 +269,8 @@ WM_KEYDOWN = 0x0100
 WM_APP_SETTINGS = 0x0400 + 1  # WM_USER+1
 WM_APP_MODE = 0x0400 + 2      # WM_USER+2
 WM_APP_QUIT = 0x0400 + 3      # WM_USER+3
+WM_APP_HOTKEYS = 0x0400 + 4   # WM_USER+4: shortcuts changed in Settings
+WM_HOTKEY = 0x0312
 
 # Virtual keys
 VK_ESCAPE = 0x1B
@@ -393,6 +450,8 @@ user32.UpdateLayeredWindow.argtypes = [
 	ctypes.POINTER(BLENDFUNCTION), wt.DWORD,
 ]
 user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+user32.RegisterHotKey.argtypes = [wt.HWND, ctypes.c_int, wt.UINT, wt.UINT]
+user32.UnregisterHotKey.argtypes = [wt.HWND, ctypes.c_int]
 user32.MessageBoxW.argtypes = [wt.HWND, wt.LPCWSTR, wt.LPCWSTR, wt.UINT]
 user32.FindWindowW.argtypes = [wt.LPCWSTR, wt.LPCWSTR]
 user32.FindWindowW.restype = wt.HWND
@@ -627,6 +686,10 @@ class CrosshairOverlay:
 		self.measure_end = None
 		self.measuring = False
 		self.mode_changed_cb = None
+		self.brightness_changed_cb = None
+		self.shortcuts_changed_cb = None
+		self.shortcut_problems = {}  # config key -> why it isn't active
+		self._hotkey_ids = []
 
 		# Virtual screen bounds
 		self.vx = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
@@ -669,6 +732,60 @@ class CrosshairOverlay:
 		self.cfg.update(cfg)
 		if self.hwnd:
 			self._redraw()
+
+	def toggle(self):
+		self.active = not self.active
+		self._redraw()
+
+	def nudge_brightness(self, delta):
+		value = round(self.cfg["brightness"] + delta, 2)
+		self.cfg["brightness"] = min(max(value, 0.0), MAX_BRIGHTNESS)
+		self._redraw()
+		if self.brightness_changed_cb:
+			self.brightness_changed_cb()
+
+	def register_shortcuts(self):
+		"""(Re)register the shortcuts. Hotkeys belong to this window's thread."""
+		for hotkey_id in self._hotkey_ids:
+			user32.UnregisterHotKey(self.hwnd, hotkey_id)
+		self._hotkey_ids = []
+		self.shortcut_problems = {}
+		labels = dict(SHORTCUT_ACTIONS)
+		taken = {}
+		for hotkey_id, (key, _label) in enumerate(SHORTCUT_ACTIONS, 1):
+			text = self.cfg[key]
+			if not text:
+				continue
+			parsed = parse_shortcut(text)
+			if parsed is None:
+				self.shortcut_problems[key] = f'"{text}" isn\'t a usable shortcut'
+				continue
+			if parsed in taken:
+				self.shortcut_problems[key] = f"same keys as {labels[taken[parsed]]}"
+				continue
+			taken[parsed] = key
+			mods, name = parsed
+			flags = 0
+			for m in mods:
+				flags |= HOTKEY_MODIFIERS[m]
+			if key == "shortcut_toggle":
+				flags |= MOD_NOREPEAT  # holding it shouldn't flicker the crosshair
+			if user32.RegisterHotKey(self.hwnd, hotkey_id, flags, SHORTCUT_KEYS[name]):
+				self._hotkey_ids.append(hotkey_id)
+			else:
+				self.shortcut_problems[key] = (
+					f"{text} is already used by Windows or another program")
+		if self.shortcuts_changed_cb:
+			self.shortcuts_changed_cb()
+
+	def _on_hotkey(self, hotkey_id):
+		key = SHORTCUT_ACTIONS[hotkey_id - 1][0]
+		if key == "shortcut_brightness_up":
+			self.nudge_brightness(BRIGHTNESS_STEP)
+		elif key == "shortcut_brightness_down":
+			self.nudge_brightness(-BRIGHTNESS_STEP)
+		else:
+			self.toggle()
 
 	def set_mode(self, mode):
 		if self.mode == mode:
@@ -772,6 +889,15 @@ class CrosshairOverlay:
 			self.set_mode(mode)
 			return 0
 
+		elif msg == WM_APP_HOTKEYS:
+			self.register_shortcuts()
+			return 0
+
+		elif msg == WM_HOTKEY:
+			if 1 <= wparam <= len(SHORTCUT_ACTIONS):
+				self._on_hotkey(wparam)
+			return 0
+
 		elif msg == WM_APP_QUIT:
 			user32.DestroyWindow(hwnd)
 			return 0
@@ -846,7 +972,7 @@ class CrosshairOverlay:
 
 	def _draw_crosshair(self, graphics, cfg):
 		r, g, b = cfg["line_color"]
-		a = cfg["line_opacity"]
+		a = opacity(cfg, "line_opacity")
 		lw = cfg["line_width"]
 
 		# Convert screen coords to bitmap coords (relative to virtual screen)
@@ -907,7 +1033,7 @@ class CrosshairOverlay:
 		# Tick marks
 		if cfg["tick_enabled"] and cfg["tick_spacing"] >= 5:
 			tr, tg, tb = cfg["tick_color"]
-			ta = cfg["tick_opacity"]
+			ta = opacity(cfg, "tick_opacity")
 			tick_pen = create_pen(argb(tr, tg, tb, ta), 1.0)
 			sp = int(cfg["tick_spacing"])  # older configs saved this as a float
 			maj = cfg["tick_major_every"]
@@ -923,7 +1049,7 @@ class CrosshairOverlay:
 				fmt = ctypes.c_void_p()
 				gdiplus.GdipCreateStringFormat(0, 0, ctypes.byref(fmt))
 				lr, lg, lb = cfg["tick_label_color"]
-				la = cfg["tick_label_opacity"]
+				la = opacity(cfg, "tick_label_opacity")
 				label_brush = create_brush(argb(lr, lg, lb, la))
 
 			# Horizontal ticks
@@ -970,13 +1096,13 @@ class CrosshairOverlay:
 		if cfg["dot_enabled"] and cfg["dot_radius"] > 0:
 			dr = cfg["dot_radius"]
 			dfr, dfg, dfb = cfg["dot_fill_color"]
-			dfa = cfg["dot_fill_opacity"]
+			dfa = opacity(cfg, "dot_fill_opacity")
 			fill_brush = create_brush(argb(dfr, dfg, dfb, dfa))
 			fill_ellipse(graphics, fill_brush, mx - dr, my - dr, dr * 2, dr * 2)
 			gdiplus.GdipDeleteBrush(fill_brush)
 
 			dsr, dsg, dsb = cfg["dot_stroke_color"]
-			dsa = cfg["dot_stroke_opacity"]
+			dsa = opacity(cfg, "dot_stroke_opacity")
 			if cfg["dot_stroke_width"] > 0 and dsa > 0:
 				stroke_pen = create_pen(argb(dsr, dsg, dsb, dsa), cfg["dot_stroke_width"])
 				draw_ellipse(graphics, stroke_pen, mx - dr, my - dr, dr * 2, dr * 2)
@@ -993,7 +1119,7 @@ class CrosshairOverlay:
 		y2 = self.measure_end[1] - self.vy
 
 		r, g, b = cfg["line_color"]
-		a = cfg["line_opacity"]
+		a = opacity(cfg, "line_opacity")
 		lw = cfg["line_width"]
 
 		# Measurement line
@@ -1020,7 +1146,7 @@ class CrosshairOverlay:
 			ux, uy = dx / dist, dy / dist
 			px_v, py_v = -uy, ux  # perpendicular
 			tr, tg, tb = cfg["tick_color"]
-			ta = cfg["tick_opacity"]
+			ta = opacity(cfg, "tick_opacity")
 			tick_pen = create_pen(argb(tr, tg, tb, ta), max(1, lw * 0.6))
 
 			font = None
@@ -1031,7 +1157,7 @@ class CrosshairOverlay:
 				fmt = ctypes.c_void_p()
 				gdiplus.GdipCreateStringFormat(0, 0, ctypes.byref(fmt))
 				lr, lg, lb = cfg["tick_label_color"]
-				la = cfg["tick_label_opacity"]
+				la = opacity(cfg, "tick_label_opacity")
 				label_brush = create_brush(argb(lr, lg, lb, la))
 
 			steps = int(dist / cfg["tick_spacing"])
@@ -1233,6 +1359,35 @@ class SettingsWindow:
 		self._add_color_row(frame, "tick_label_color", "Color", cfg["tick_label_color"])
 		self._add_spin_row(frame, "tick_label_opacity", "Opacity", 0.0, 1.0, 0.05, cfg["tick_label_opacity"])
 		self._add_spin_row(frame, "tick_label_size", "Size", 6.0, 24.0, 1.0, cfg["tick_label_size"])
+
+		# ── Brightness & Shortcuts ──
+		frame = self._make_section("Brightness & Shortcuts")
+		self._sections.append(frame)
+
+		self._add_spin_row(frame, "brightness", "Brightness", 0.0, MAX_BRIGHTNESS, 0.05,
+			cfg["brightness"])
+		self._make_button(frame, "Reset brightness", self._reset_brightness).pack(
+			anchor="w", pady=(0, 4))
+		self._shortcut_vars = {}
+		for key, label in SHORTCUT_ACTIONS:
+			row = tk.Frame(frame, bg=self.BG_SECTION)
+			row.pack(fill="x", pady=2)
+			tk.Label(row, text=label, width=14, anchor="w",
+				bg=self.BG_SECTION, fg=self.FG).pack(side="left")
+			var = tk.StringVar(value=cfg[key])
+			entry = tk.Entry(row, textvariable=var, width=26,
+				bg=self.BG_INPUT, fg=self.FG, insertbackground=self.FG,
+				relief="flat", highlightthickness=1, highlightcolor=self.ACCENT,
+				highlightbackground=self.BORDER)
+			entry.pack(side="left", padx=5, fill="x", expand=True)
+			entry.bind("<KeyPress>", lambda e, k=key: self._on_shortcut_key(e, k))
+			self._shortcut_vars[key] = var
+		tk.Label(frame, text="Click a box and press the keys to use. Backspace clears it.",
+			bg=self.BG_SECTION, fg=self.FG_DIM, anchor="w", justify="left",
+			wraplength=280).pack(fill="x", pady=(4, 0))
+		self._shortcut_status = tk.Label(frame, text="", bg=self.BG_SECTION, fg="#e0a050",
+			anchor="w", justify="left", wraplength=280)
+		self._shortcut_status.pack(fill="x")
 
 		# ── Favorites ──
 		frame = self._make_section("Favorites")
@@ -1464,6 +1619,63 @@ class SettingsWindow:
 			self._widgets[key] = ("color", btn, new_val)
 			self._on_change()
 
+	def _reset_brightness(self):
+		self._set_spin(self._widgets["brightness"], 1.0)
+		self._on_change()
+
+	def brightness_changed(self):
+		"""Called on the overlay thread after a shortcut changes the brightness."""
+		if self._root:
+			self._root.after(0, self._sync_brightness)
+
+	def _sync_brightness(self):
+		self._loading = True
+		self._set_spin(self._widgets["brightness"], self.cfg["brightness"])
+		self._loading = False
+		self._schedule_save()
+
+	def shortcuts_changed(self):
+		"""Called on the overlay thread after the shortcuts are registered."""
+		if self._root:
+			self._root.after(0, self._show_shortcut_status)
+
+	def _show_shortcut_status(self):
+		labels = dict(SHORTCUT_ACTIONS)
+		self._shortcut_status.configure(text="\n".join(
+			f"{labels[key]}: {problem}"
+			for key, problem in self.overlay.shortcut_problems.items()))
+
+	def _on_shortcut_key(self, event, key):
+		vk = event.keycode
+		if vk == 0x09:
+			return None  # Tab keeps moving between fields
+		if vk in (0x10, 0x11, 0x12, 0x5B, 0x5C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5):
+			return "break"  # wait for the key that goes with the modifiers
+
+		def down(*vks):
+			return any(user32.GetKeyState(v) & 0x8000 for v in vks)
+		mods = [m for m, vks in (("Ctrl", (0x11,)), ("Alt", (0x12,)),
+			("Shift", (0x10,)), ("Super", (0x5B, 0x5C))) if down(*vks)]
+
+		if not mods and vk in (0x08, 0x2E):
+			text = ""
+		else:
+			name = VK_TO_KEY.get(vk)
+			if name is None:
+				self._shortcut_status.configure(text="That key can't be used for a shortcut.")
+				return "break"
+			text = format_shortcut(mods, name)
+			if parse_shortcut(text) is None:
+				self._shortcut_status.configure(
+					text="Include Ctrl, Alt or Win, so the shortcut can't clash with typing.")
+				return "break"
+
+		self._shortcut_vars[key].set(text)
+		self.cfg[key] = text
+		user32.PostMessageW(self.overlay_hwnd, WM_APP_HOTKEYS, 0, 0)
+		self._schedule_save()
+		return "break"
+
 	def _on_auto_start_toggled(self):
 		enabled = self._auto_start_var.get()
 		_set_autostart(enabled)
@@ -1566,8 +1778,7 @@ class TrayIcon:
 		import pystray
 
 		def on_toggle(icon, item):
-			self.overlay.active = not self.overlay.active
-			self.overlay._redraw()
+			self.overlay.toggle()
 
 		def on_mode_crosshair(icon, item):
 			self._current_mode = "crosshair"
@@ -1674,6 +1885,9 @@ if __name__ == "__main__":
 	tray = TrayIcon(overlay, settings_win)
 	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
 	overlay.mode_changed_cb = tray._sync_mode
+	overlay.brightness_changed_cb = settings_win.brightness_changed
+	overlay.shortcuts_changed_cb = settings_win.shortcuts_changed
+	overlay.register_shortcuts()
 	tray.start()
 
 	try:

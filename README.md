@@ -44,6 +44,8 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
   - Hold **Ctrl** while dragging to snap the angle to 15° increments (0°, 15°, 30°, 45°, etc.)
   - Press **Escape** to return to crosshair mode
 - **Favorites** — save named presets of your crosshair settings and switch between them instantly from the settings window or the tray menu
+- **Brightness** — one control that dims or brightens every element together, keeping their relative opacities
+- **Keyboard shortcuts** — global shortcuts to raise or lower the brightness and to show or hide the crosshair, configurable in Settings
 - **Start at login** — optional autostart on both platforms
 - **Uninstall** — remove config files and autostart entries from within the settings window
 - All values editable via spin buttons (type exact values or use arrows)
@@ -72,6 +74,8 @@ The Linux version needs an X11 session and a running compositor, however you ins
 - **Desktops with built-in compositing:** Cinnamon includes a compositor. Some desktops, including MATE, let you turn compositing off; on MATE it's the software compositing option under Control Center > Windows.
 - **Window managers without compositing:** install and run a standalone compositor such as `picom`, then start the app.
 
+Keyboard shortcuts on Linux also need the Keybinder library (`gir1.2-keybinder-3.0` on Debian-based systems). The app runs without it, but the shortcuts are unavailable.
+
 The `.deb` is for Debian-based systems such as Ubuntu and Linux Mint. On other distributions, such as Fedora, install your distribution's equivalent packages and run from source.
 
 ### Linux (.deb)
@@ -98,10 +102,10 @@ Download `CrosshairOverlay-1.1.1.exe` from the [latest release](https://github.c
 
 #### Linux
 
-Requirements: Python 3, GTK 3 (`gir1.2-gtk-3.0`), and AppIndicator3 (`gir1.2-appindicator3-0.1`), plus the [Linux requirements](#linux-requirements) above. The package names and `apt` command below are for Debian-based systems.
+Requirements: Python 3, GTK 3 (`gir1.2-gtk-3.0`), AppIndicator3 (`gir1.2-appindicator3-0.1`), and optionally Keybinder (`gir1.2-keybinder-3.0`) for keyboard shortcuts, plus the [Linux requirements](#linux-requirements) above. The package names and `apt` command below are for Debian-based systems.
 
 ```bash
-sudo apt install python3 gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
+sudo apt install python3 gir1.2-gtk-3.0 gir1.2-appindicator3-0.1 gir1.2-keybinder-3.0
 python3 linux/crosshair_overlay.py
 ```
 
@@ -131,6 +135,20 @@ The tray menu contains:
 - **Favorites** — quickly load a saved preset from the tray menu
 - **About** — show the running version, where it's running from, and a link to its release notes
 - **Quit** — exit the application
+
+### Keyboard shortcuts
+
+These work in any application while the overlay is running:
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Alt+Shift+PageUp` | Brighter (hold to keep going) |
+| `Ctrl+Alt+Shift+PageDown` | Dimmer (hold to keep going) |
+| `Ctrl+Alt+Shift+Home` | Show or hide the crosshair |
+
+To change one, open **Settings**, click its box under **Brightness & Shortcuts**, and press the new keys. Backspace clears it. Shortcuts need Ctrl, Alt or Super (the Windows key) so they can't clash with typing. If another program or the desktop already uses the keys, Settings says so and the shortcut stays off. Shortcuts used only inside one application can't be detected, and the overlay takes them over while it's running.
+
+The brightness multiplies every element's opacity, from 0 to 2, and **Reset brightness** puts it back to 1. Above 1, an element stops at full opacity.
 
 ### Measure mode
 
@@ -172,6 +190,10 @@ Settings are stored in a JSON config file (see platform table above) and are cre
 | `tick_label_color` | `[0.9, 0.9, 0.9]` | Label text RGB (0.0 - 1.0) |
 | `tick_label_opacity` | `0.5` | Label text opacity (0.0 - 1.0) |
 | `tick_label_size` | `9.0` | Label font size in pixels (6 - 24) |
+| `brightness` | `1.0` | Multiplies every element's opacity (0.0 - 2.0); not saved in favorites |
+| `shortcut_brightness_up` | `"Ctrl+Alt+Shift+PageUp"` | Shortcut to raise the brightness; `""` turns it off |
+| `shortcut_brightness_down` | `"Ctrl+Alt+Shift+PageDown"` | Shortcut to lower the brightness; `""` turns it off |
+| `shortcut_toggle` | `"Ctrl+Alt+Shift+Home"` | Shortcut to show or hide the crosshair; `""` turns it off |
 
 ## Notes
 

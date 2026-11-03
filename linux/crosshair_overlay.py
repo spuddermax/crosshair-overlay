@@ -7,7 +7,12 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('GdkX11', '3.0')
 gi.require_version('AppIndicator3', '0.1')
 # GdkX11 adds get_xid() to Gdk.Window
-from gi.repository import Gtk, Gdk, GdkX11, GLib, AppIndicator3
+from gi.repository import Gtk, Gdk, GdkX11, Gio, GLib, AppIndicator3
+try:
+	gi.require_version('Keybinder', '3.0')
+	from gi.repository import Keybinder
+except (ValueError, ImportError):
+	Keybinder = None  # optional: only the keyboard shortcuts need it
 import cairo
 import fcntl
 import json
@@ -61,7 +66,115 @@ DEFAULTS = {
 	"tick_label_color": [0.9, 0.9, 0.9],
 	"tick_label_opacity": 0.5,
 	"tick_label_size": 9.0,
+	"shortcut_brightness_up": "Ctrl+Alt+Shift+PageUp",
+	"shortcut_brightness_down": "Ctrl+Alt+Shift+PageDown",
+	"shortcut_toggle": "Ctrl+Alt+Shift+Home",
 }
+
+# Settings that describe this machine rather than a look, so favorites skip them
+NOT_IN_FAVORITES = ("brightness", "shortcut_brightness_up",
+	"shortcut_brightness_down", "shortcut_toggle")
+
+# ── Shortcuts ───────────────────────────────────────────────────────────────
+
+SHORTCUT_ACTIONS = (
+	("shortcut_brightness_up", "Brighter"),
+	("shortcut_brightness_down", "Dimmer"),
+	("shortcut_toggle", "Show/hide"),
+)
+MODIFIER_ORDER = ("Ctrl", "Alt", "Shift", "Super")
+
+# Shortcut key names, shared with the Windows version, and their X keysyms
+SHORTCUT_KEYS = {
+	**{c: c.lower() for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
+	**{d: d for d in "0123456789"},
+	**{f"F{n}": f"F{n}" for n in range(1, 25)},
+	"PageUp": "Page_Up", "PageDown": "Page_Down", "Home": "Home", "End": "End",
+	"Insert": "Insert", "Delete": "Delete",
+	"Up": "Up", "Down": "Down", "Left": "Left", "Right": "Right",
+	"Minus": "minus", "Equal": "equal",
+}
+KEYSYM_TO_KEY = {sym: name for name, sym in SHORTCUT_KEYS.items()}
+X_MODIFIERS = {"Ctrl": "<Control>", "Alt": "<Alt>", "Shift": "<Shift>", "Super": "<Super>"}
+
+
+def parse_shortcut(text):
+	"""Split "Ctrl+Alt+PageUp" into (modifiers, key), or None if it isn't usable.
+
+	Shift alone isn't enough, since that would take over normal typing.
+	"""
+	*mods, key = [part.strip() for part in text.split("+")]
+	if (key not in SHORTCUT_KEYS or len(set(mods)) != len(mods)
+			or any(m not in MODIFIER_ORDER for m in mods)
+			or not set(mods) - {"Shift"}):
+		return None
+	return tuple(m for m in MODIFIER_ORDER if m in mods), key
+
+
+def format_shortcut(mods, key):
+	return "+".join((*mods, key))
+
+
+# Desktops whose window managers don't use X11 key grabs, so a clash with
+# their shortcuts can't be detected by grabbing: (settings prefix, custom list)
+DESKTOP_KEYBINDINGS = {
+	"cinnamon": ("org.cinnamon", ("org.cinnamon.desktop.keybindings",
+		"custom-list", "org.cinnamon.desktop.keybindings.custom-keybinding",
+		"/org/cinnamon/desktop/keybindings/custom-keybindings/{}/")),
+	"gnome": ("org.gnome", ("org.gnome.settings-daemon.plugins.media-keys",
+		"custom-keybindings", "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding",
+		"{}")),
+	"mate": ("org.mate", None),
+}
+ACCEL_MODS = (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
+	| Gdk.ModifierType.MOD1_MASK | Gdk.ModifierType.SUPER_MASK)
+
+
+def _accel_id(accel):
+	keyval, mods = Gtk.accelerator_parse(accel)
+	if not keyval:
+		return None
+	return Gdk.keyval_to_lower(keyval), int(mods & ACCEL_MODS)
+
+
+def desktop_shortcuts():
+	"""The current desktop's own shortcuts, as {(keyval, mods): name}."""
+	desktops = os.environ.get("XDG_CURRENT_DESKTOP", "").lower().split(":")
+	found = {}
+	source = Gio.SettingsSchemaSource.get_default()
+	if source is None:
+		return found
+
+	def add(settings, schema, key, name):
+		value = settings.get_value(key)
+		if value.get_type_string() == "as":
+			accels = value.unpack()
+		elif value.get_type_string() == "s":
+			accels = [value.unpack()]
+		else:
+			return
+		for accel in accels:
+			ident = _accel_id(accel) if accel else None
+			if ident:
+				found.setdefault(ident, name)
+
+	for desktop, (prefix, custom) in DESKTOP_KEYBINDINGS.items():
+		if not any(desktop in d for d in desktops):
+			continue
+		for schema_id in source.list_schemas(True)[0]:
+			if schema_id.startswith(prefix) and "keybindings" in schema_id:
+				schema = source.lookup(schema_id, True)
+				settings = Gio.Settings.new(schema_id)
+				for key in schema.list_keys():
+					add(settings, schema, key, key.replace("-", " "))
+		if custom:
+			list_schema, list_key, item_schema, path = custom
+			if source.lookup(list_schema, True) and source.lookup(item_schema, True):
+				for item in Gio.Settings.new(list_schema).get_strv(list_key):
+					item_settings = Gio.Settings.new_with_path(item_schema, path.format(item))
+					name = item_settings.get_string("name") or "a custom shortcut"
+					add(item_settings, None, "binding", name)
+	return found
 
 
 def fade_factor(dist, start, end):
@@ -116,7 +229,8 @@ def favorite_settings(saved):
 	"""Settings a favorite applies; defaults fill keys it predates."""
 	merged = dict(DEFAULTS)
 	merged.update(saved)
-	del merged["brightness"]  # stays as it is when a favorite loads
+	for key in NOT_IN_FAVORITES:
+		del merged[key]
 	return merged
 
 
@@ -292,6 +406,10 @@ class CrosshairOverlay(Gtk.Window):
 		self.tick_labels = cfg["tick_labels"]
 		self.tick_label_color = rgba("tick_label_color", "tick_label_opacity")
 		self.tick_label_size = cfg["tick_label_size"]
+		self.queue_draw()
+
+	def toggle(self):
+		self.active = not self.active
 		self.queue_draw()
 
 	def enable_click_through(self):
@@ -772,6 +890,41 @@ class SettingsWindow(Gtk.Window):
 		self._set_tick_controls_sensitive(cfg["tick_enabled"])
 		self._set_label_controls_sensitive(cfg["tick_enabled"] and cfg["tick_labels"])
 
+		# ── Brightness & Shortcuts ──
+		frame, grid = self._make_section("Brightness & Shortcuts")
+		flowbox.add(frame)
+		row = 0
+
+		self.brightness_spin = self._add_spin_row(
+			grid, row, "Brightness", 0.0, MAX_BRIGHTNESS, 0.05, cfg["brightness"], 2)
+		reset_btn = Gtk.Button(label="Reset brightness")
+		reset_btn.set_tooltip_text("Back to 1.00, the opacities set in each section")
+		reset_btn.connect("clicked", lambda _b: self.brightness_spin.set_value(1.0))
+		grid.attach(reset_btn, 2, row, 1, 1); row += 1
+
+		self.shortcut_entries = {}
+		for key, label in SHORTCUT_ACTIONS:
+			grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
+			entry = Gtk.Entry()
+			entry.set_text(cfg[key])
+			entry.set_placeholder_text("None")
+			entry.set_hexpand(True)
+			entry.connect("key-press-event", self._on_shortcut_key, key)
+			grid.attach(entry, 1, row, 2, 1); row += 1
+			self.shortcut_entries[key] = entry
+
+		hint = Gtk.Label(
+			label="Click a box and press the keys to use. Backspace clears it.",
+			xalign=0)
+		hint.set_line_wrap(True)
+		hint.get_style_context().add_class("dim-label")
+		grid.attach(hint, 0, row, 3, 1); row += 1
+		self.shortcut_status = Gtk.Label(xalign=0)
+		self.shortcut_status.set_line_wrap(True)
+		self.shortcut_status.set_max_width_chars(40)
+		grid.attach(self.shortcut_status, 0, row, 3, 1)
+		self.shortcuts = None
+
 		# ── Favorites ──
 		fav_frame = Gtk.Frame(label="Favorites")
 		fav_frame.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
@@ -884,11 +1037,66 @@ class SettingsWindow(Gtk.Window):
 
 	def nudge_brightness(self, delta):
 		"""Scale every element's opacity, leaving the values set in Settings."""
-		value = self.cfg["brightness"] + delta
-		self.cfg["brightness"] = round(min(max(value, 0.0), MAX_BRIGHTNESS), 2)
-		self.overlay.apply_settings(self.cfg)
-		self._schedule_save()
+		# The spin button clamps the value, applies it and saves it
+		self.brightness_spin.set_value(round(self.cfg["brightness"] + delta, 2))
 		return GLib.SOURCE_CONTINUE
+
+	def set_shortcuts(self, shortcuts):
+		self.shortcuts = shortcuts
+		self._apply_shortcuts()
+
+	def _apply_shortcuts(self):
+		self.shortcuts.apply(self.cfg)
+		labels = dict(SHORTCUT_ACTIONS)
+		if not self.shortcuts.available:
+			text = ("Shortcuts need the Keybinder library: "
+				"install gir1.2-keybinder-3.0, then restart the app.")
+		else:
+			text = "\n".join(f"{labels[key]}: {problem}"
+				for key, problem in self.shortcuts.problems.items())
+		self.shortcut_status.set_text(text)
+		self.shortcut_status.set_visible(bool(text))
+
+	def _on_shortcut_key(self, entry, event, key):
+		name = Gdk.keyval_name(event.keyval) or ""
+		if name in ("Tab", "ISO_Left_Tab"):
+			return False  # keep keyboard navigation working
+		if name.split("_")[0] in ("Shift", "Control", "Alt", "Super", "Meta",
+				"Hyper", "ISO"):
+			return True  # wait for the key that goes with the modifiers
+
+		state = event.state
+		mods = [m for m, mask in (
+			("Ctrl", Gdk.ModifierType.CONTROL_MASK),
+			("Alt", Gdk.ModifierType.MOD1_MASK),
+			("Shift", Gdk.ModifierType.SHIFT_MASK),
+			("Super", Gdk.ModifierType.SUPER_MASK | Gdk.ModifierType.MOD4_MASK),
+		) if state & mask]
+
+		if not mods and name in ("BackSpace", "Delete"):
+			text = ""
+		else:
+			# Use the key's unshifted name, so Shift+1 is 1 rather than !
+			keymap = Gdk.Keymap.get_for_display(entry.get_display())
+			_, base, *_ = keymap.translate_keyboard_state(
+				event.hardware_keycode, Gdk.ModifierType(0), event.group)
+			key_name = KEYSYM_TO_KEY.get(Gdk.keyval_name(base))
+			if key_name is None:
+				self.shortcut_status.set_text("That key can't be used for a shortcut.")
+				self.shortcut_status.show()
+				return True
+			text = format_shortcut(mods, key_name)
+			if parse_shortcut(text) is None:
+				self.shortcut_status.set_text(
+					"Include Ctrl, Alt or Super, so the shortcut can't clash with typing.")
+				self.shortcut_status.show()
+				return True
+
+		entry.set_text(text)
+		self.cfg[key] = text
+		self._apply_shortcuts()
+		self._schedule_save()
+		return True
 
 	def load_favorite(self, name):
 		if name not in self.favorites:
@@ -904,6 +1112,7 @@ class SettingsWindow(Gtk.Window):
 		self.line_color_btn.set_rgba(Gdk.RGBA(*cfg["line_color"], 1.0))
 		self.line_width_spin.set_value(cfg["line_width"])
 		self.line_opacity_spin.set_value(cfg["line_opacity"])
+		self.brightness_spin.set_value(cfg["brightness"])
 		self.fullscreen_check.set_active(cfg["crosshair_fullscreen"])
 		self.crosshair_radius_spin.set_value(cfg["crosshair_radius"])
 		self.crosshair_radius_spin.set_sensitive(not cfg["crosshair_fullscreen"])
@@ -1022,6 +1231,7 @@ class SettingsWindow(Gtk.Window):
 			"line_color": [lc.red, lc.green, lc.blue],
 			"line_width": self.line_width_spin.get_value(),
 			"line_opacity": round(self.line_opacity_spin.get_value(), 2),
+			"brightness": round(self.brightness_spin.get_value(), 2),
 			"crosshair_fullscreen": self.fullscreen_check.get_active(),
 			"crosshair_radius": int(self.crosshair_radius_spin.get_value()),
 			"fade_enabled": self.fade_check.get_active(),
@@ -1072,6 +1282,55 @@ class SettingsWindow(Gtk.Window):
 
 
 # ── System Tray ─────────────────────────────────────────────────────────────
+
+class Shortcuts:
+	"""Global keyboard shortcuts, through Keybinder when it's installed."""
+
+	def __init__(self, actions):
+		self.actions = actions  # config key -> callback
+		self.bound = {}  # config key -> X accelerator
+		self.problems = {}  # config key -> why it isn't active
+		self.available = Keybinder is not None
+		if self.available:
+			Keybinder.init()
+
+	def apply(self, cfg):
+		for accel in self.bound.values():
+			Keybinder.unbind(accel)
+		self.bound.clear()
+		self.problems.clear()
+		if not self.available:
+			return
+		labels = dict(SHORTCUT_ACTIONS)
+		desktop = desktop_shortcuts()
+		taken = {}
+		for key in self.actions:
+			if not cfg[key]:
+				continue
+			parsed = parse_shortcut(cfg[key])
+			if parsed is None:
+				self.problems[key] = f"\"{cfg[key]}\" isn't a usable shortcut"
+				continue
+			if parsed in taken:
+				self.problems[key] = f"same keys as {labels[taken[parsed]]}"
+				continue
+			taken[parsed] = key
+			mods, name = parsed
+			accel = "".join(X_MODIFIERS[m] for m in mods) + SHORTCUT_KEYS[name]
+			owner = desktop.get(_accel_id(accel))
+			if owner:
+				self.problems[key] = (
+					f"{cfg[key]} is already a desktop shortcut ({owner})")
+				continue
+			if Keybinder.bind(accel, self._fire, key):
+				self.bound[key] = accel
+			else:
+				self.problems[key] = (
+					f"{cfg[key]} is already used by another program or the desktop")
+
+	def _fire(self, _accel, key):
+		self.actions[key]()
+
 
 class TrayIcon:
 	def __init__(self, overlay, settings_win):
@@ -1154,8 +1413,7 @@ class TrayIcon:
 			self.radio_measure.set_active(True)
 
 	def on_toggle(self, _item):
-		self.overlay.active = not self.overlay.active
-		self.overlay.queue_draw()
+		self.overlay.toggle()
 
 	def on_mode_changed(self, item, mode):
 		if item.get_active():
@@ -1221,6 +1479,12 @@ if __name__ == "__main__":
 		settings_win.nudge_brightness, BRIGHTNESS_STEP)
 	GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2,
 		settings_win.nudge_brightness, -BRIGHTNESS_STEP)
+
+	settings_win.set_shortcuts(Shortcuts({
+		"shortcut_brightness_up": lambda: settings_win.nudge_brightness(BRIGHTNESS_STEP),
+		"shortcut_brightness_down": lambda: settings_win.nudge_brightness(-BRIGHTNESS_STEP),
+		"shortcut_toggle": overlay.toggle,
+	}))
 
 	try:
 		Gtk.main()

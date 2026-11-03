@@ -771,6 +771,7 @@ class SettingsWindow(Gtk.Window):
 		self.set_position(Gtk.WindowPosition.CENTER)
 		self.connect("delete-event", self.on_delete)
 
+		self._sized = False
 		scroll = Gtk.ScrolledWindow()
 		scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 		self.add(scroll)
@@ -787,6 +788,7 @@ class SettingsWindow(Gtk.Window):
 		flowbox.set_min_children_per_line(1)
 		flowbox.set_max_children_per_line(4)
 		scroll.add(flowbox)
+		self.flowbox = flowbox
 
 		# ── Crosshair Line ──
 		frame, grid = self._make_section("Crosshair Line")
@@ -910,6 +912,9 @@ class SettingsWindow(Gtk.Window):
 			entry.set_placeholder_text("None")
 			entry.set_hexpand(True)
 			entry.connect("key-press-event", self._on_shortcut_key, key)
+			# While a box has focus, its keys must reach it rather than run an action
+			entry.connect("focus-in-event", self._on_shortcut_focus, True)
+			entry.connect("focus-out-event", self._on_shortcut_focus, False)
 			grid.attach(entry, 1, row, 2, 1); row += 1
 			self.shortcut_entries[key] = entry
 
@@ -1045,8 +1050,18 @@ class SettingsWindow(Gtk.Window):
 		self.shortcuts = shortcuts
 		self._apply_shortcuts()
 
+	def _on_shortcut_focus(self, _entry, _event, focused):
+		if self.shortcuts:
+			if focused:
+				self.shortcuts.suspend()
+			else:
+				self._apply_shortcuts()
+		return False
+
 	def _apply_shortcuts(self):
 		self.shortcuts.apply(self.cfg)
+		if any(e.has_focus() for e in self.shortcut_entries.values()):
+			self.shortcuts.suspend()  # checked for clashes; back on when focus leaves
 		labels = dict(SHORTCUT_ACTIONS)
 		if not self.shortcuts.available:
 			text = ("Shortcuts need the Keybinder library: "
@@ -1143,6 +1158,47 @@ class SettingsWindow(Gtk.Window):
 		self._set_label_controls_sensitive(cfg["tick_enabled"] and cfg["tick_labels"])
 		self._loading = False
 
+	def _scroll_page(self, _widget, event):
+		"""Make the mouse wheel over a field scroll the window, not change the value."""
+		adj = self.get_child().get_vadjustment()
+		if event.direction == Gdk.ScrollDirection.UP:
+			steps = -1
+		elif event.direction == Gdk.ScrollDirection.DOWN:
+			steps = 1
+		elif event.direction == Gdk.ScrollDirection.SMOOTH:
+			steps = event.get_scroll_deltas()[2]
+		else:
+			return True
+		# The same distance GTK scrolls for one wheel step
+		step = adj.get_page_size() ** (2 / 3)
+		adj.set_value(min(max(adj.get_value() + steps * step, adj.get_lower()),
+			adj.get_upper() - adj.get_page_size()))
+		return True
+
+	def fit_to_screen(self):
+		"""On first opening, size the window to show every section if it fits."""
+		if self._sized:
+			return
+		self._sized = True
+		self.get_child().show_all()
+		display = self.get_display()
+		_, x, y = display.get_default_seat().get_pointer().get_position()
+		area = display.get_monitor_at_point(x, y).get_workarea()
+		margin = 60  # room for the title bar and a little space around
+		# Lay sections out side by side, as many as the flow box and screen allow
+		sections = self.flowbox.get_children()
+		section_width = max(c.get_preferred_width()[1] for c in sections)
+		gap = self.flowbox.get_column_spacing()
+		edges = self.flowbox.get_margin_start() + self.flowbox.get_margin_end()
+		fit = (area.width - margin - edges + gap) // (section_width + gap)
+		cols = max(1, min(fit, len(sections), self.flowbox.get_max_children_per_line()))
+		width = min(cols * (section_width + gap) - gap + edges, area.width - margin)
+		_, height = self.flowbox.get_preferred_height_for_width(width)
+		height = min(height, area.height - margin)
+		self.resize(width, height)
+		self.move(area.x + (area.width - width) // 2,
+			area.y + (area.height - height) // 2)
+
 	def _make_section(self, title):
 		frame = Gtk.Frame(label=title)
 		frame.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
@@ -1169,6 +1225,7 @@ class SettingsWindow(Gtk.Window):
 		adj = Gtk.Adjustment(value=value, lower=lo, upper=hi,
 			step_increment=step, page_increment=step * 10)
 		spin = Gtk.SpinButton(adjustment=adj, digits=digits)
+		spin.connect("scroll-event", self._scroll_page)
 		spin.set_hexpand(True)
 		spin.connect("value-changed", self.on_change)
 		grid.attach(spin, 1, row, 1, 1)
@@ -1294,10 +1351,14 @@ class Shortcuts:
 		if self.available:
 			Keybinder.init()
 
-	def apply(self, cfg):
+	def suspend(self):
+		"""Turn the shortcuts off, keeping the last clash report."""
 		for accel in self.bound.values():
 			Keybinder.unbind(accel)
 		self.bound.clear()
+
+	def apply(self, cfg):
+		self.suspend()
 		self.problems.clear()
 		if not self.available:
 			return
@@ -1422,6 +1483,7 @@ class TrayIcon:
 	def on_settings(self, _item):
 		if self.overlay.mode != "crosshair":
 			self.radio_crosshair.set_active(True)
+		self.settings_win.fit_to_screen()
 		self.settings_win.show_all()
 		self.settings_win.present()
 

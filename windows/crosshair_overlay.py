@@ -450,6 +450,7 @@ user32.UpdateLayeredWindow.argtypes = [
 	ctypes.POINTER(BLENDFUNCTION), wt.DWORD,
 ]
 user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+user32.SystemParametersInfoW.argtypes = [wt.UINT, wt.UINT, ctypes.c_void_p, wt.UINT]
 user32.RegisterHotKey.argtypes = [wt.HWND, ctypes.c_int, wt.UINT, wt.UINT]
 user32.UnregisterHotKey.argtypes = [wt.HWND, ctypes.c_int]
 user32.MessageBoxW.argtypes = [wt.HWND, wt.LPCWSTR, wt.LPCWSTR, wt.UINT]
@@ -744,11 +745,14 @@ class CrosshairOverlay:
 		if self.brightness_changed_cb:
 			self.brightness_changed_cb()
 
-	def register_shortcuts(self):
-		"""(Re)register the shortcuts. Hotkeys belong to this window's thread."""
+	def unregister_shortcuts(self):
 		for hotkey_id in self._hotkey_ids:
 			user32.UnregisterHotKey(self.hwnd, hotkey_id)
 		self._hotkey_ids = []
+
+	def register_shortcuts(self):
+		"""(Re)register the shortcuts. Hotkeys belong to this window's thread."""
+		self.unregister_shortcuts()
 		self.shortcut_problems = {}
 		labels = dict(SHORTCUT_ACTIONS)
 		taken = {}
@@ -890,7 +894,11 @@ class CrosshairOverlay:
 			return 0
 
 		elif msg == WM_APP_HOTKEYS:
-			self.register_shortcuts()
+			# wparam: 1 register, 0 turn off, 2 check for clashes then turn off
+			if wparam:
+				self.register_shortcuts()
+			if wparam != 1:
+				self.unregister_shortcuts()
 			return 0
 
 		elif msg == WM_HOTKEY:
@@ -1381,6 +1389,9 @@ class SettingsWindow:
 				highlightbackground=self.BORDER)
 			entry.pack(side="left", padx=5, fill="x", expand=True)
 			entry.bind("<KeyPress>", lambda e, k=key: self._on_shortcut_key(e, k))
+			# While a box has focus, its keys must reach it rather than run an action
+			entry.bind("<FocusIn>", lambda e: self._post_hotkeys(0))
+			entry.bind("<FocusOut>", lambda e: self._post_hotkeys(1))
 			self._shortcut_vars[key] = var
 		tk.Label(frame, text="Click a box and press the keys to use. Backspace clears it.",
 			bg=self.BG_SECTION, fg=self.FG_DIM, anchor="w", justify="left",
@@ -1425,15 +1436,41 @@ class SettingsWindow:
 			anchor="w", pady=(6, 2))
 
 		# Flow layout: reflow sections into grid on resize
-		self._section_min_width = SECTION_MIN_WIDTH
+		root.update_idletasks()
+		self._section_min_width = max(
+			[SECTION_MIN_WIDTH] + [s.winfo_reqwidth() for s in self._sections])
 		self._pad = PAD
 		canvas.bind("<Configure>", self._on_canvas_resize)
-		self._reflow_sections(root.winfo_reqwidth())
+		self._fit_to_screen(scrollbar)
+
+		# The mouse wheel scrolls the window, and never changes a value
+		def scroll(event):
+			canvas.yview_scroll(int(-event.delta / 120), "units")
+			return "break"
+		root.bind_all("<MouseWheel>", scroll)
+		root.bind_class("Spinbox", "<MouseWheel>", scroll)
 
 		root.protocol("WM_DELETE_WINDOW", self._on_close)
 		root.withdraw()  # Start hidden
 		self._ready.set()
 		root.mainloop()
+
+	def _fit_to_screen(self, scrollbar):
+		"""Open large enough to show every section, within the screen's work area."""
+		area = wt.RECT()
+		user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(area), 0)  # SPI_GETWORKAREA
+		area_w, area_h = area.right - area.left, area.bottom - area.top
+		margin = 80  # room for the title bar and a little space around
+		column = self._section_min_width + self._pad * 2
+		extra = scrollbar.winfo_reqwidth()
+		cols = max(1, min(4, len(self._sections), (area_w - margin - extra) // column))
+		width = cols * column + extra
+		self._reflow_sections(cols * column)
+		self._root.update_idletasks()
+		height = min(self._flow_frame.winfo_reqheight() + self._pad, area_h - margin)
+		x = area.left + (area_w - width) // 2
+		y = area.top + max(0, (area_h - height - 40) // 2)
+		self._root.geometry(f"{width}x{height}+{x}+{y}")
 
 	def _on_canvas_resize(self, event):
 		width = event.width
@@ -1672,9 +1709,12 @@ class SettingsWindow:
 
 		self._shortcut_vars[key].set(text)
 		self.cfg[key] = text
-		user32.PostMessageW(self.overlay_hwnd, WM_APP_HOTKEYS, 0, 0)
+		self._post_hotkeys(2)  # report clashes, but stay off while the box has focus
 		self._schedule_save()
 		return "break"
+
+	def _post_hotkeys(self, action):
+		user32.PostMessageW(self.overlay_hwnd, WM_APP_HOTKEYS, action, 0)
 
 	def _on_auto_start_toggled(self):
 		enabled = self._auto_start_var.get()
@@ -1723,6 +1763,7 @@ class SettingsWindow:
 		save_config(self.cfg)
 
 	def _on_close(self):
+		self._post_hotkeys(1)  # in case a shortcut box still had focus
 		if self._save_timer is not None:
 			self._root.after_cancel(self._save_timer)
 			self._save_timer = None

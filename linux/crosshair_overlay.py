@@ -22,7 +22,8 @@ import time
 # ── Config ──────────────────────────────────────────────────────────────────
 
 APP_VERSION = "1.1.1"  # build scripts read the release version from this line
-OPACITY_STEP = 0.01
+BRIGHTNESS_STEP = 0.01
+MAX_BRIGHTNESS = 2.0
 RELEASE_URL = ("https://github.com/spuddermax/crosshair-overlay/releases/tag/v"
 	+ APP_VERSION.removesuffix(".0"))
 
@@ -35,6 +36,7 @@ LOCK_FILE = os.path.join(CONFIG_DIR, "instance.lock")
 DEFAULTS = {
 	"line_color": [0.9, 0.9, 0.9],
 	"line_width": 1.0,
+	"brightness": 1.0,
 	"line_opacity": 0.35,
 	"crosshair_fullscreen": True,
 	"crosshair_radius": 100,
@@ -114,6 +116,7 @@ def favorite_settings(saved):
 	"""Settings a favorite applies; defaults fill keys it predates."""
 	merged = dict(DEFAULTS)
 	merged.update(saved)
+	del merged["brightness"]  # stays as it is when a favorite loads
 	return merged
 
 
@@ -266,7 +269,7 @@ class CrosshairOverlay(Gtk.Window):
 	def apply_settings(self, cfg):
 		def rgba(color_key, opacity_key):
 			r, g, b = cfg[color_key]
-			return (r, g, b, cfg[opacity_key])
+			return (r, g, b, min(1.0, cfg[opacity_key] * cfg["brightness"]))
 
 		self.line_color = rgba("line_color", "line_opacity")
 		self.line_width = cfg["line_width"]
@@ -861,7 +864,7 @@ class SettingsWindow(Gtk.Window):
 			self._save_favorite(name)
 
 	def _save_favorite(self, name):
-		self.favorites[name] = dict(self.cfg)
+		self.favorites[name] = favorite_settings(self.cfg)
 		save_favorites(self.favorites)
 		self._rebuild_favorites_list()
 		if self.favorites_changed_cb:
@@ -879,10 +882,12 @@ class SettingsWindow(Gtk.Window):
 			return
 		self.load_favorite(name)
 
-	def nudge_line_opacity(self, delta):
-		"""Adjust the line opacity; the spin button applies and saves it."""
-		self.line_opacity_spin.set_value(
-			round(self.line_opacity_spin.get_value() + delta, 2))
+	def nudge_brightness(self, delta):
+		"""Scale every element's opacity, leaving the values set in Settings."""
+		value = self.cfg["brightness"] + delta
+		self.cfg["brightness"] = round(min(max(value, 0.0), MAX_BRIGHTNESS), 2)
+		self.overlay.apply_settings(self.cfg)
+		self._schedule_save()
 		return GLib.SOURCE_CONTINUE
 
 	def load_favorite(self, name):
@@ -1211,11 +1216,11 @@ if __name__ == "__main__":
 	tray = TrayIcon(overlay, settings_win)
 	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
 
-	# SIGUSR1 and SIGUSR2 raise and lower the line opacity by one step
+	# SIGUSR1 and SIGUSR2 raise and lower the brightness by one step
 	GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
-		settings_win.nudge_line_opacity, OPACITY_STEP)
+		settings_win.nudge_brightness, BRIGHTNESS_STEP)
 	GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2,
-		settings_win.nudge_line_opacity, -OPACITY_STEP)
+		settings_win.nudge_brightness, -BRIGHTNESS_STEP)
 
 	try:
 		Gtk.main()

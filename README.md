@@ -46,6 +46,7 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 - **Favorites** — save named presets of your crosshair settings and switch between them instantly from the settings window or the tray menu (brightness and shortcuts aren't part of a favorite, so loading one keeps them)
 - **Brightness** — one control that dims or brightens every element together, keeping their relative opacities
 - **Keyboard shortcuts** — global shortcuts to raise or lower the brightness and to show or hide the crosshair, configurable in Settings
+- **Zoom slider (Linux, optional)** — an extra that turns the zoom slider on a Microsoft Digital Media Pro Keyboard into a brightness control; see [`linux/extras/zoom-slider`](linux/extras/zoom-slider)
 - **Start at login** — optional autostart on both platforms
 - **Uninstall** — remove config files and autostart entries from within the settings window
 - All values editable via spin buttons (type exact values or use arrows)

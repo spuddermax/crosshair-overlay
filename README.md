@@ -65,6 +65,15 @@ Measure mode with ruler ticks and Ctrl-snap — click and drag to measure pixel 
 
 ## Installation
 
+### Linux requirements
+
+The Linux version needs an X11 session and a running compositor, however you install it. Without a compositor the overlay can't be transparent, so the app shows an error and exits.
+
+- **Desktops with built-in compositing:** Cinnamon includes a compositor. Some desktops, including MATE, let you turn compositing off; on MATE it's the software compositing option under Control Center > Windows.
+- **Window managers without compositing:** install and run a standalone compositor such as `picom`, then start the app.
+
+The `.deb` is for Debian-based systems such as Ubuntu and Linux Mint. On other distributions, such as Fedora, install your distribution's equivalent packages and run from source.
+
 ### Linux (.deb)
 
 Download `crosshair-overlay_1.1.1_all.deb` from the [latest release](https://github.com/spuddermax/crosshair-overlay/releases/latest) and install:
@@ -89,7 +98,7 @@ Download `CrosshairOverlay-1.1.1.exe` from the [latest release](https://github.c
 
 #### Linux
 
-Requirements: Python 3, GTK 3 (`gir1.2-gtk-3.0`), AppIndicator3 (`gir1.2-appindicator3-0.1`), X11, and a running compositor. Without a compositor the overlay can't be transparent, so the app shows an error and exits. Some desktops, including MATE, let you turn compositing off; on MATE it's the software compositing option under Control Center > Windows.
+Requirements: Python 3, GTK 3 (`gir1.2-gtk-3.0`), and AppIndicator3 (`gir1.2-appindicator3-0.1`), plus the [Linux requirements](#linux-requirements) above. The package names and `apt` command below are for Debian-based systems.
 
 ```bash
 sudo apt install python3 gir1.2-gtk-3.0 gir1.2-appindicator3-0.1

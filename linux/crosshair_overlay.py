@@ -4,8 +4,10 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
+gi.require_version('GdkX11', '3.0')
 gi.require_version('AppIndicator3', '0.1')
-from gi.repository import Gtk, Gdk, GLib, AppIndicator3
+# GdkX11 adds get_xid() to Gdk.Window
+from gi.repository import Gtk, Gdk, GdkX11, GLib, AppIndicator3
 import cairo
 import fcntl
 import json
@@ -256,6 +258,7 @@ class CrosshairOverlay(Gtk.Window):
 		self.measure_start = None
 		self.measure_end = None
 		self.measuring = False
+		self.stacking_order = None
 		self.apply_settings(cfg)
 
 	def apply_settings(self, cfg):
@@ -372,9 +375,18 @@ class CrosshairOverlay(Gtk.Window):
 		return False
 
 	def stay_on_top(self):
-		"""The window manager won't keep an override-redirect window above others."""
+		"""The window manager won't keep an override-redirect window above others.
+
+		Raising makes the window manager do work, so only raise when the
+		stacking order has changed. Without a reported order, always raise.
+		"""
 		gdk_win = self.get_window()
-		if gdk_win:
+		if not gdk_win:
+			return True
+		stack = Gdk.Screen.get_default().get_window_stack()
+		order = [w.get_xid() for w in stack] if stack else None
+		if order is None or order != self.stacking_order:
+			self.stacking_order = order
 			gdk_win.raise_()
 		return True
 

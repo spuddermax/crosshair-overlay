@@ -14,6 +14,7 @@ import json
 import math
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -21,6 +22,7 @@ import time
 # ── Config ──────────────────────────────────────────────────────────────────
 
 APP_VERSION = "1.1.1"  # build scripts read the release version from this line
+OPACITY_STEP = 0.01
 RELEASE_URL = ("https://github.com/spuddermax/crosshair-overlay/releases/tag/v"
 	+ APP_VERSION.removesuffix(".0"))
 
@@ -877,6 +879,12 @@ class SettingsWindow(Gtk.Window):
 			return
 		self.load_favorite(name)
 
+	def nudge_line_opacity(self, delta):
+		"""Adjust the line opacity; the spin button applies and saves it."""
+		self.line_opacity_spin.set_value(
+			round(self.line_opacity_spin.get_value() + delta, 2))
+		return GLib.SOURCE_CONTINUE
+
 	def load_favorite(self, name):
 		if name not in self.favorites:
 			return
@@ -1176,6 +1184,10 @@ class TrayIcon:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+	# Their default action would quit the app if one arrived during startup
+	signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+	signal.signal(signal.SIGUSR2, signal.SIG_IGN)
+
 	instance_lock = acquire_instance_lock()
 	if instance_lock is None:
 		print("crosshair-overlay: already running", file=sys.stderr)
@@ -1198,6 +1210,12 @@ if __name__ == "__main__":
 	settings_win = SettingsWindow(overlay, cfg, favs)
 	tray = TrayIcon(overlay, settings_win)
 	settings_win.favorites_changed_cb = tray._rebuild_favorites_menu
+
+	# SIGUSR1 and SIGUSR2 raise and lower the line opacity by one step
+	GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
+		settings_win.nudge_line_opacity, OPACITY_STEP)
+	GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2,
+		settings_win.nudge_line_opacity, -OPACITY_STEP)
 
 	try:
 		Gtk.main()

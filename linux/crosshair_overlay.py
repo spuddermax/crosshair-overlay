@@ -768,6 +768,9 @@ class SettingsWindow(Gtk.Window):
 		self._loading = False
 
 		self.set_default_size(1100, 580)
+		# Clicks on labels and empty space reach the window; use them to take focus
+		# off a shortcut box, so the shortcuts come back on
+		self.connect("button-press-event", lambda *_: self.set_focus(None))
 		self.set_position(Gtk.WindowPosition.CENTER)
 		self.connect("delete-event", self.on_delete)
 

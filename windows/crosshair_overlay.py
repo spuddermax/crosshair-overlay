@@ -1445,10 +1445,18 @@ class SettingsWindow:
 
 		# The mouse wheel scrolls the window, and never changes a value
 		def scroll(event):
-			canvas.yview_scroll(int(-event.delta / 120), "units")
+			if canvas.yview() != (0.0, 1.0):  # only when there's more than fits
+				canvas.yview_scroll(int(-event.delta / 120), "units")
 			return "break"
 		root.bind_all("<MouseWheel>", scroll)
 		root.bind_class("Spinbox", "<MouseWheel>", scroll)
+
+		# Clicking empty space or a label takes focus off a shortcut box, so the
+		# shortcuts come back on; those widgets don't take focus themselves
+		def click(event):
+			if event.widget.winfo_class() in ("Frame", "Labelframe", "Label", "Canvas"):
+				root.focus_set()
+		root.bind_all("<Button-1>", click, add="+")
 
 		root.protocol("WM_DELETE_WINDOW", self._on_close)
 		root.withdraw()  # Start hidden

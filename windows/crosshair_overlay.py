@@ -15,7 +15,7 @@ import time
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
-APP_VERSION = "1.1.1"  # build scripts read the release version from this line
+APP_VERSION = "1.2.0"  # build scripts read the release version from this line
 BRIGHTNESS_STEP = 0.01
 MAX_BRIGHTNESS = 2.0
 RELEASE_URL = ("https://github.com/spuddermax/crosshair-overlay/releases/tag/v"
